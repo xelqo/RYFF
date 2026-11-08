@@ -32,11 +32,11 @@ User:     "I'm done" / "go back to the last one" / "download it"
 ```
 
 ## Client tools (configured in the ElevenLabs dashboard, implemented in the frontend)
-All of them are **blocking** (set "wait for response" in the UI), so the agent reacts to the result.
+All of them are **blocking** (set "wait for response" in the UI), so the agent reacts to the result. They must return quickly: `set_vibe` and `record_sound` never wait for a song to finish generating, so the agent can talk during the wait. The contextual update says when a version is ready.
 
 | Tool | Params | Frontend does | Returns to agent |
 |---|---|---|---|
-| `set_vibe` | `vibe_text: string` | `POST /sessions`, shows the "producing…" state | `"generating v1 for <vibe>"` |
+| `set_vibe` | `vibe_text: string` | `POST /sessions`, or `PATCH /sessions/{id}/vibe` if a session exists; shows the "producing…" state | `"generating v1 for <vibe>"` |
 | `record_sound` | `kind: drums\|bass\|melody\|texture` | pause music, mute agent mic, beep, record ~5 s, `POST /parts` | `"heard: busy, punchy, bright"` or `"too quiet, ask again"` |
 | `play_version` | `n?: number` (latest if empty) | mute agent mic, play that version on loop | `"playing v3"` |
 | `skip_part` | `kind` | marks that prompt as skipped | `"skipped drums"` |
@@ -69,7 +69,9 @@ How a session goes:
 Rules:
 - Keep every reply to 1-2 short sentences. The music is the star, not you.
 - Never sing, hum or make the sounds yourself.
-- The vibe can't change during a session. If asked, say they can start a new song.
+- If they want a different style, call set_vibe right away and tell them you are keeping their sounds.
+- Never say a version is ready until you get a context update saying so.
+- If they go off-topic, answer in one short line and bring them back to the song.
 - Never talk while music is playing; you'll be muted then anyway.
 - If a tool returns "too quiet", ask them to try again a bit louder.
 ```
@@ -87,7 +89,7 @@ const [agentMuted, setAgentMuted] = useState(false);
 const conversation = useConversation({
   micMuted: agentMuted,
   clientTools: {
-    set_vibe:     async ({ vibe_text }) => { await api.createSession(vibe_text); return `generating v1 for ${vibe_text}`; },
+    set_vibe:     async ({ vibe_text }) => { await (sessionId ? api.changeVibe(vibe_text) : api.createSession(vibe_text)); return `generating a version for ${vibe_text}`; },
     record_sound: async ({ kind }) => { pauseMusic(); setAgentMuted(true);
                                         const traits = await recordAndUpload(kind); setAgentMuted(false);
                                         return traits ? `heard: ${describe(traits)}` : "too quiet, ask again"; },
@@ -108,3 +110,6 @@ first contextual update).
 - Too loud on stage → a **text-only** agent (`textOnly: true`) driven by the on-screen buttons, or no agent at all;
   the buttons do the same things.
 - The agent's speech recognition mishears a vibe → also show the 4 preset buttons while it's asking.
+
+## Interruptions in the demo
+The mic stays muted while music plays, to prevent false triggers. Show judges interrupting the producer while it is speaking, and use "Talk to producer" to change your mind during a song.

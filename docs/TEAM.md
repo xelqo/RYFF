@@ -23,15 +23,15 @@ Creates and tunes the voice agent (voice, prompt, tools; see AGENT.md). Writes t
 each added part is clearly audible. That decides how good the demo sounds. Records test claps/hums, tests the app
 end to end. Late: demo script, slides, Devpost, backup video, rehearsal. Floater when someone is stuck.
 
-## Timeline (assuming ~24 h; scale to the event)
+## Timeline (today)
 | When | What |
 |---|---|
-| Hour 0–1, together | Agree the Session / Part / Version JSON, write the mocks, create the folder skeleton |
-| Hour 1–3 | 3: step 0 tests · 4: vibe presets + words, listening alongside 3 · 1: player + recorder on mocks · 2: analyse.py locally |
-| ~Hour 3, check-in | Go / no-go on continuity + speed → pick the fallbacks if needed |
-| ~Hour 8 | Milestone 1 + 2 merged: vibe → song → add a sound → new version (traits faked) |
-| ~Hour 14 | Milestone 3: real traits through Daytona. 4 records the first backup video |
-| Last 5–6 h | Feature freeze: polish, bug fixes, rehearse |
+| Now | Alex: Music test · Avi: agent in the dashboard, presets · Lucas: player, recorder, agent wiring on mocks · Derik: `analyse.py` locally |
+| 2:30 | Go or no-go on the Music API |
+| 3:00 | Voice sets the vibe and a song plays |
+| 3:45 | Penny through Daytona makes a new version |
+| 4:15 | Export works, record the Loom |
+| Until 5:00 | Feature freeze, curveballs, demo room test |
 
 ## Rules
 - `main` always runs. Use personal branches and small, frequent PRs; Alex merges.

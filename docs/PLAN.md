@@ -2,7 +2,9 @@
 
 Rule: **always have something demoable.** Each milestone ends with a working app, even if ugly.
 
-## Step 0: ElevenLabs Music tests (first ~2 hours, before any UI)
+**Clock (today):** Music test go or no-go 2:30 · voice sets the vibe and a song plays 3:00 · penny makes a new version 3:45 · export works and Loom recorded 4:15 · feature freeze until 5:00. Confirm the Loom deadline with the organizers.
+
+## Step 0: ElevenLabs Music tests (now, before any UI)
 Plain Python scripts in `spikes/`. These decide whether the core idea works:
 1. **Speed:** generate a 30 s lo-fi beat with `music_v2`. How long does it take? (That's the wait after every sound.)
 2. **song_id:** find the header it comes back in, and check whether `store_for_inpainting` is needed to reference it.
@@ -45,7 +47,6 @@ kind; but then Daytona only does mixing, so keep traits if at all possible).
 **Never cut the voice agent** (it's a hackathon requirement). Worst case, fall back to a text-only agent plus the buttons.
 
 ## Out of scope (decided)
-- Changing the vibe mid-session
 - Exact use of the user's rhythm or melody (it's loose inspiration)
 - Recording while music plays
-- Our own audio engine / layering / tempo sync
+- Live realtime layering or tempo sync (offline penny mixing in `mix.py` is in scope)

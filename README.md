@@ -4,7 +4,7 @@
 clap something and the song gets drums that feel like your clap; hum and it gets a melody shaped like your hum.
 Every sound you add makes a new, fuller version of the song.
 
-Built for <hackathon name> with **ElevenLabs** (a voice agent "producer" that runs the session + **Music**, which
+Built for the SDX Hackathon with **ElevenLabs** (a voice agent "producer" that runs the session + **Music**, which
 generates every version of the song) and **Daytona** (sandboxed audio analysis + mixing).
 
 ## The 10-second pitch
@@ -13,7 +13,7 @@ punchy, soaring, low and smooth) into a part of your song.
 
 ## How a session goes
 A voice agent, **the producer**, talks you through it (the on-screen buttons do the same things):
-1. **Choose a vibe** (text or preset): "chill lo-fi", "dark trap", "summer house". It's fixed for the session.
+1. **Choose a vibe** (text or preset): "chill lo-fi", "dark trap", "summer house". You can change it later by asking.
 2. **Version 1 plays:** a beat in that vibe.
 3. **The producer asks for a sound**, e.g. "Want drums? Clap or tap something after the beep." (Every step can be skipped.)
 4. **Press record → the music pauses.** Recording only ever happens with no music playing.
@@ -22,8 +22,7 @@ A voice agent, **the producer**, talks you through it (the on-screen buttons do 
 6. **The new version plays.** Next prompt: "Hum a melody", "Hum something low for bass", "Any other sound?"
 7. Step back to any earlier version, and download the one you like.
 
-Your sound is **loosely** related to the result: it steers the part (busy vs sparse, punchy vs soft, high vs low,
-rising vs falling). The result isn't a copy of what you did.
+Your sound does two jobs. Its traits steer the generated part (busy vs sparse, punchy vs soft, high vs low, rising vs falling), and a hit such as a clap or a dropped penny is also mixed into the track, so you can hear your real sound.
 
 ## How it works
 ```

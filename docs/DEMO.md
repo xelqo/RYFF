@@ -9,6 +9,7 @@
 5. **One more (15 s):** a low hum for bass, or jingling keys for a texture.
 6. **How it works (20 s):** one slide: your sound → Daytona sandbox (traits) → words → ElevenLabs Music builds the
    next version on the last one.
+6.5. **Curveball (20 s):** tap "Talk to producer" and say "Actually, make it dark trap." It regenerates and keeps your sound. Also interrupt the producer once while it is speaking.
 7. **Close (10 s):** play the version history from v1 to the final one quickly. "From a clap to a song."
 
 ## Rules

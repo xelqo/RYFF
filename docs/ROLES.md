@@ -20,7 +20,7 @@ coordinate in the group chat first.
 - The shared contract is the Session / Part / Version / Traits JSON in `docs/ARCHITECTURE.md`. Build against it
   and change it only after telling the group.
 - Original code only: don't copy from other repos (ideas are fine).
-- Check-in at ~hour 3 (step 0 results from Alex), then a 5-min standup every ~3 h. Stuck for more than 45 min? Grab Avi.
+- Check-in at 2:30 (step 0 results from Alex), then at each time in `docs/TEAM.md`. Stuck for more than 15 min? Grab Avi.
 
 ---
 
@@ -49,7 +49,7 @@ docs/ARCHITECTURE.md and a fake API module with the same endpoints, so switching
 Make it look great on a projector and work on a phone. Commit small and often.
 ```
 **Done when:** you can pick a vibe, hear v1, record a clap (music pauses), see "producing…", and hear v2, by buttons AND by talking to the producer, (mocked at
-first, then real once Alex's backend is merged, ~hour 8).
+first, then real once Alex's backend is merged, 3:45).
 
 ---
 
@@ -64,7 +64,8 @@ on the branch "sandbox".
    as in docs/ARCHITECTURE.md (busyness, punch, brightness; for bass/melody also pitch_register, contour,
    smoothness; plus length_s), using librosa only (pyin for pitch). Trim silence first; print an error JSON if the
    take is near-silent. Normalise values to 0-1 with sensible ranges, tested on real claps/hums in spikes/takes/.
-2. sandbox/mix.py: loudness-normalise an mp3 to -14 LUFS and add short fades so it loops cleanly (ffmpeg).
+2. sandbox/mix.py: cut the cleanest hit from a drum take, detect beats in the generated mp3 with librosa.beat, layer the
+   hit on those beats so the real sound is audible, then loudness-normalise to -14 LUFS and add short fades (ffmpeg).
 3. sandbox/requirements.txt + a script that builds a Daytona snapshot named "loopstack-audio" with the deps
    preinstalled (librosa, soundfile, numpy, ffmpeg) so sandboxes start ready.
 4. backend/daytona_runner.py: a class with start(session_id) to create or reuse ONE sandbox per session,
@@ -93,13 +94,14 @@ FIRST do PLAN.md step 0 in spikes/music_test.py with ElevenLabs Music (model mus
  d) same song with "busy punchy drums" vs "sparse soft drums"
 Save every mp3 in spikes/out/ with clear names and write the findings into docs/APIS.md (resolve the ⚠︎ items).
 THEN build a FastAPI backend: POST /sessions {vibe_text}, POST /sessions/{id}/parts (multipart audio, kind,
-from_version?), GET /sessions/{id}, GET /agent-token (mints an ElevenLabs Agents conversation token with the
+from_version?; returns {part, status} right after analysis and generates in the background), PATCH /sessions/{id}/vibe
+(keep part words, no conditioning_ref), GET /sessions/{id}, GET /agent-token (mints an ElevenLabs Agents conversation token with the
 server key, see docs/AGENT.md), GET /files/{path}. In-memory state. A composition-plan builder
 (vibe + all parts' words -> 2-3 chunks, conditioning_ref on the first chunk pointing at the previous version, same
 seed every version). Call backend/daytona_runner.py (Derik) for traits + mixing, and backend/vibes.py +
 backend/words.py (Avi) for styles and words. Stub those until they land. Keys from .env only. CORS for Vite.
 ```
-**Done when:** step 0 results are shared at the ~hour-3 check-in, and by ~hour 8 the real API serves Lucas's
+**Done when:** step 0 results are shared at the 2:30 check-in, and by 3:45 the real API serves Lucas's
 frontend end to end. You also review and merge everyone's PRs.
 
 ---
