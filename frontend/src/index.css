@@ -208,3 +208,7 @@ input {
   gap: 8px;
   margin-top: 16px;
 }
+
+.download {
+  margin-left: auto;
+}

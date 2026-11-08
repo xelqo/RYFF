@@ -104,6 +104,28 @@ export default function App() {
     }
   };
 
+  const downloadSong = async () => {
+    const versions = loop.sessionRef.current?.versions ?? [];
+    const version = versions.find((v) => v.n === player.current) ?? versions[versions.length - 1];
+    if (!version) return "nothing to download yet";
+    try {
+      const response = await fetch(api.fileUrl(version.url));
+      if (!response.ok) throw new Error(`download failed (${response.status})`);
+      const blob = await response.blob();
+      const ext = version.url.split("?")[0].split(".").pop() || "mp3";
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `loopstack-v${version.n}.${ext}`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+      return `downloaded v${version.n}`;
+    } catch (e) {
+      setError(String(e));
+      return "download failed";
+    }
+  };
+
+  useConversationClientTool("download_song", async () => downloadSong());
   useConversationClientTool("play_version", async (params) => playVersion(params.n ? Number(params.n) : undefined));
   useConversationClientTool("record_sound", async (params) => addSound((params.kind as PartKind) ?? prompt.kind));
   useConversationClientTool("skip_part", async (params) => skipPart((params.kind as PartKind) ?? prompt.kind));
@@ -170,6 +192,7 @@ export default function App() {
               <div className="now">{player.current ? `v${player.current}` : "Ready"}</div>
               <div className="muted">{session.vibe.text} · {session.vibe.bpm} BPM</div>
             </div>
+            <button className="ghost download" onClick={downloadSong} disabled={player.current === null}>Download</button>
           </div>
           <Visualiser analyser={player.analyser} active={player.playing} />
           <div className="versions">
