@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useConversation, useConversationClientTool } from "@elevenlabs/react";
 import { api } from "./api";
 import { useLoopstack } from "./useLoopstack";
+import { usePlayer } from "./usePlayer";
+import { Visualiser } from "./Visualiser";
 import type { Session, Version } from "./types";
 
 const PRESETS = ["chill lo-fi", "dark trap", "summer house", "upbeat pop"];
@@ -15,10 +17,17 @@ function readyMessage(version: Version, session: Session) {
 
 export default function App() {
   const [vibeInput, setVibeInput] = useState("");
-  const conversation = useConversation();
+  const player = usePlayer();
+  const agentMuted = player.playing;
+  const conversation = useConversation({ micMuted: agentMuted });
   const agentOn = conversation.status === "connected";
 
-  const loop = useLoopstack((version, session) => {
+  const loop = useLoopstack(async (version, session) => {
+    try {
+      await player.play(api.fileUrl(version.url), version.n);
+    } catch (e) {
+      setError(`Tap play to hear v${version.n} (${String(e)})`);
+    }
     if (agentOn) conversation.sendContextualUpdate(readyMessage(version, session));
   });
   const { session, building, error, setError } = loop;
@@ -53,7 +62,8 @@ export default function App() {
           <span className={`dot ${conversation.status}`} />
           {agentOn ? (
             <>
-              <span>{conversation.isSpeaking ? "Producer is talking" : "Producer is listening"}</span>
+              <span>{agentMuted ? "Producer muted" : conversation.isSpeaking ? "Producer is talking" : "Producer is listening"}</span>
+              {agentMuted && <button onClick={player.pause}>Talk to producer</button>}
               <button className="ghost" onClick={() => conversation.endSession()}>End</button>
             </>
           ) : (
@@ -89,9 +99,17 @@ export default function App() {
       {building && <section className="card">{building.label}…</section>}
 
       {session && session.versions.length > 0 && (
-        <section className="card">
-          <h2>Versions</h2>
-          <p>{session.versions.map((v) => `v${v.n}`).join(" · ")}</p>
+        <section className="card player">
+          <div className="player-row">
+            <button className="play" onClick={() => (player.playing ? player.pause() : player.resume())} disabled={player.current === null}>
+              {player.playing ? "Pause" : "Play"}
+            </button>
+            <div>
+              <div className="now">{player.current ? `v${player.current}` : "Ready"}</div>
+              <div className="muted">{session.vibe.text} · {session.vibe.bpm} BPM</div>
+            </div>
+          </div>
+          <Visualiser analyser={player.analyser} active={player.playing} />
         </section>
       )}
 

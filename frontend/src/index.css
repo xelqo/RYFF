@@ -142,3 +142,31 @@ input {
   color: #ff8080;
   margin: 0;
 }
+
+.muted {
+  color: var(--muted);
+}
+
+.player-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.play {
+  min-width: 96px;
+  min-height: 64px;
+  font-size: 1.2rem;
+}
+
+.now {
+  font-size: clamp(1.6rem, 5vw, 2.4rem);
+  font-weight: 800;
+}
+
+.visualiser {
+  width: 100%;
+  height: clamp(100px, 22vw, 180px);
+  display: block;
+}
