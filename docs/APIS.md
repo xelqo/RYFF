@@ -1,5 +1,9 @@
 # API notes (checked against the docs on 2026-11-08; re-check anything marked ⚠︎)
 
+> **Shipped build (2:00 PM):** ElevenLabs = the agent + Sound Effects (every kit and instrument sound) + Music
+> (optional backing track, simple `prompt` request in `backend/eleven.py`). The composition-plan / `conditioning_ref`
+> notes below are kept for reference; the shipped build doesn't depend on them.
+
 ## ElevenLabs Music (the core): `POST https://api.elevenlabs.io/v1/music`
 Auth header `xi-api-key: $ELEVENLABS_API_KEY`. Python SDK: `pip install elevenlabs`.
 
@@ -51,8 +55,11 @@ Auth header `xi-api-key: $ELEVENLABS_API_KEY`. Python SDK: `pip install elevenla
   a UI "ding" or a texture preview. Not needed for the core.
 
 ## Daytona
-Python SDK, key from env `DAYTONA_API_KEY`. ⚠︎ Confirm the package name (`pip install daytona`) and the exec/delete
-names in the SDK reference.
+Python SDK, key from env `DAYTONA_API_KEY`. `pip install daytona` and `from daytona import Daytona` are confirmed by
+the event deck (slide 13). `sandbox.process.exec(cmd)` returns `.exit_code` and `.result`;
+`sandbox.fs.upload_file(bytes, path)` / `download_file(path) -> bytes`. Used in `backend/runners.py`, which falls back
+gracefully if `CreateSandboxFromSnapshotParams` or `sandbox.delete()` differ. **The shipped build needs no snapshot:**
+`sandbox/analyse.py` is numpy-only.
 ```python
 from daytona import Daytona, CreateSandboxFromSnapshotParams
 daytona = Daytona()

@@ -1,40 +1,24 @@
-# Team split (4 people)
+# Team split for the rest of today (submit by 4:15)
 
-Names, owned folders and copy-paste agent briefs: **[ROLES.md](ROLES.md)**.
+The code is in place (shipped build, 2:00 PM). Everyone tests and polishes their own folder. Detailed briefs for
+AI coding agents: [ROLES.md](ROLES.md).
 
-Each person owns one folder, so everyone can build in parallel and merge conflicts stay rare.
+| Who | Owns | First 20 minutes |
+|---|---|---|
+| **Lucas**: frontend | `frontend/` | `npm install && npm run dev`, set a vibe with the manual buttons, check the beat, the count-in and that hums land on the beat (tune `LATENCY_NUDGE_MS` in `recorder.ts`) |
+| **Derik**: analysis + Daytona | `sandbox/`, `backend/runners.py` | Put `DAYTONA_API_KEY` in `.env`, start the backend, wait for **daytona: ready** in the top bar. Record claps and hums and check the results |
+| **Alex**: backend + ElevenLabs, merges | `backend/` (except the files below) | `ELEVENLABS_API_KEY` in `.env`, run `python prewarm.py`, test every endpoint, keep `main` running |
+| **Avi**: sound design, agent, demo | `backend/vibes.py`, `docs/` | Create the agent from [AGENT.md](AGENT.md), put its ID in `frontend/.env`, listen to every preset kit and re-prompt bad sounds in `vibes.py`, rehearse the Loom |
 
-## Roles
-**1. Frontend: Lucas** (`frontend/`)
-Vibe picker, guided "add a sound" prompts, recorder (auto-pauses playback), looping player + audio visualiser,
-version history, loading/"producing…" state, and the voice agent wiring (`@elevenlabs/react` client tools). Starts against **mock session JSON + a few sample mp3s**
-(`frontend/mock/`), so it doesn't wait on the backend. Owns how it looks and feels on stage.
-
-**2. Analysis + Daytona: Derik** (`sandbox/`)
-`analyse.py` (traits from takes, librosa) and `mix.py` (loudness, fades), developed locally first. Then the Daytona
-snapshot, a per-session sandbox, and upload/run/download from the backend.
-
-**3. Backend + ElevenLabs: Alex** (`backend/`)
-Leads **step 0** (the Music API tests). FastAPI endpoints, session + version state, the composition-plan builder
-(vibe + parts → chunks + conditioning_ref), ElevenLabs calls, the agent token endpoint, file serving. **Runs integration and merges PRs.**
-
-**4. Sound/prompt design + voice agent + demo: Avi** (`backend/vibes.py`, `backend/words.py`, `docs/`, the agent in the ElevenLabs dashboard)
-Creates and tunes the voice agent (voice, prompt, tools; see AGENT.md). Writes the vibe presets and the traits → words table, then tunes them **by ear** until each preset sounds great and
-each added part is clearly audible. That decides how good the demo sounds. Records test claps/hums, tests the app
-end to end. Late: demo script, slides, Devpost, backup video, rehearsal. Floater when someone is stuck.
-
-## Timeline (assuming ~24 h; scale to the event)
+## Timeline
 | When | What |
 |---|---|
-| Hour 0–1, together | Agree the Session / Part / Version JSON, write the mocks, create the folder skeleton |
-| Hour 1–3 | 3: step 0 tests · 4: vibe presets + words, listening alongside 3 · 1: player + recorder on mocks · 2: analyse.py locally |
-| ~Hour 3, check-in | Go / no-go on continuity + speed → pick the fallbacks if needed |
-| ~Hour 8 | Milestone 1 + 2 merged: vibe → song → add a sound → new version (traits faked) |
-| ~Hour 14 | Milestone 3: real traits through Daytona. 4 records the first backup video |
-| Last 5–6 h | Feature freeze: polish, bug fixes, rehearse |
+| now → 2:45 | Everyone gets their part working end to end on one laptop |
+| 2:45 → 3:30 | Full voice runs: vibe → clap → hum → vibe change → export. Fix whatever breaks |
+| 3:30 → 3:50 | Feature freeze. Rehearse the script twice, including the interruption |
+| 3:50 → 4:10 | Record the Loom (live, one take, under 2:00), push, submit repo link + Loom + track/user/finish line |
 
 ## Rules
-- `main` always runs. Use personal branches and small, frequent PRs; Alex merges.
-- Changing the shared JSON shape needs a heads-up in the group chat first.
-- 5-minute standup every ~3 h: what works, what's blocked, what gets cut.
-- Stuck for more than 45 min? Grab Avi.
+- `main` always runs. Small commits, pull before you push; Alex merges.
+- Never paste API keys into the frontend or a commit.
+- Stuck for more than 15 minutes? Say so in the group chat.

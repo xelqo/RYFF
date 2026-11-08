@@ -1,25 +1,36 @@
-# Demo plan (~2 minutes)
+# Demo: the 2-minute Loom (due 4:15)
 
-## Script
-1. **Hook (10 s):** "You don't need an instrument or music words to make a song. Just make some noise."
-2. **Vibe (15 s):** the producer says "What vibe are we making?" Answer out loud: "chill lo-fi". The first version plays.
-3. **Clap (25 s):** the producer asks "Want drums? Clap after the beep." Get the AUDIENCE to clap fast and hard. The music pauses, the screen
-   shows *"we heard: busy · punchy"*, and the new version comes back with driving drums. *This is the moment.*
-4. **Hum (25 s):** the producer: "Hum me a tune." Hum something rising. The next version has a soaring melody on top.
-5. **One more (15 s):** a low hum for bass, or jingling keys for a texture.
-6. **How it works (20 s):** one slide: your sound → Daytona sandbox (traits) → words → ElevenLabs Music builds the
-   next version on the last one.
-7. **Close (10 s):** play the version history from v1 to the final one quickly. "From a clap to a song."
+Judges pick finalists from the Loom, so it has to be **one live conversation with the producer**, no cuts and no
+faked steps. Screen + mic, headphones on, stop at 2:00. Finalists then demo live at 5:00 with the same script.
 
-## Rules
-- Generation takes time, so **cover it with talking**: explain the traits while it produces.
-- Pre-generate v1 for the preset vibe you'll demo. Pre-warm the sandbox.
-- **Record a backup video** of a perfect run early and update it as features land.
-- Keep a pre-recorded clap and hum ready to upload if the room is too loud.
+## Before you hit record
+- Backend running with the pill showing **daytona: ready**; `python prewarm.py` already run.
+- Fresh browser tab, mic allowed, headphones in, a quiet corner.
+- Say the track, user and finish line in the first 10 seconds (below).
+
+## Script (~2:00)
+| Time | You | What the judges see |
+|---|---|---|
+| 0:00 | "This is Loopstack, Open track. It's for creators who need an original, copyright-safe intro beat. Done means an exported track made from their own sounds." | Title screen, then press **Talk to the producer** |
+| 0:12 | "Hey! Let's make something chill, like lo-fi." | Producer replies in about a second, `set_vibe`, the beat starts |
+| 0:25 | "Can I clap the snare?" → producer: "Clap a few times after I say go" → clap 3–4 times | `record_part`, "Analysing in the Daytona sandbox…", the snare chip flips to **your clap** |
+| 0:45 | "Now let me hum a melody." → four clicks → hum two bars | Your tune comes back on rhodes, in key |
+| 1:05 | **Interrupt it mid-sentence:** "Actually, make it trap." | `set_vibe` again: tempo, kit and key change, your clap and hum stay |
+| 1:20 | "Make my clap the kick instead." | `set_part_slot`, the kick chip shows your clap |
+| 1:30 | "Fill it out." | `add_backing`: producer keeps talking while the track composes |
+| 1:45 | "Perfect, I'm done." | `export_song`, download button: the finish line |
+| 1:55 | "Voice on ElevenLabs, every take analysed in a Daytona sandbox." | End |
+
+The interruption at 1:05 and the change of mind are on purpose: they hit "handles being interrupted" and
+"handles curveballs" in the rubric.
+
+## If something breaks while recording
+Keep going and let the producer recover (that's a curveball too). If the take fails, say "let's try that again".
+Don't paste in pre-recorded audio: the rubric says no faked steps.
 
 ## Judging angles
-- **Sponsor use is load-bearing:** an ElevenLabs voice agent runs the session; ElevenLabs Music makes every version and builds on the last; Daytona hosts each
-  session's audio analysis and mixing.
-- **Who it's for:** people with no instrument or music vocabulary; creators who want original, copyright-safe tracks.
-- **What's different:** it isn't one prompt, one song. The song grows step by step from sounds you make, and you can go
-  back to any version.
+- **Works live:** quick replies, interruptible, every step is real.
+- **Solves the problem:** ends with a real WAV built from your own sounds.
+- **Technical depth:** 7 client tools, pitch tracking and hit detection, ElevenLabs SFX + Music.
+- **Uses Daytona:** every take is analysed by code running in a Daytona sandbox.
+- **ElevenLabs prize:** tools, custom voice, English + Spanish, tuned turn-taking, knowledge base.
