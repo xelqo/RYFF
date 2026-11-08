@@ -71,6 +71,7 @@ export default function App() {
 }
 
 function Studio() {
+  const [studioOpen, setStudioOpen] = useState(false);
   const [session, setSessionState] = useState<Session | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const [status, setStatus] = useState("");
@@ -312,6 +313,7 @@ function Studio() {
       return out;
     } catch (e) {
       const out = `Error: ${errMsg(e)}`;
+      setError(out);
       debug.error("tool", fmt(e));
       log("app", out);
       return out;
@@ -351,7 +353,7 @@ function Studio() {
     return () => clearInterval(id);
   }, []);
 
-  // Error terminal: count errors and pop it open when something goes wrong.
+  // Keep errors discoverable without interrupting the canvas.
   useEffect(() => {
     let seen = debug.entries.length;
     return debug.subscribe((entries) => {
@@ -360,7 +362,7 @@ function Studio() {
       const errors = fresh.filter((e) => e.level === "error").length;
       if (errors) {
         setErrorCount((c) => c + errors);
-        setDebugOpen(true);
+        // Keep errors visible in the logs badge without repeatedly covering the studio.
       }
     });
   }, []);
@@ -434,13 +436,13 @@ function Studio() {
 
   useEffect(() => {
     engine.onPulse = (key) => {
-      document.getElementById(`pulse-${key}`)?.animate(
+      document.querySelectorAll(`[id="pulse-${key}"], [id="part-${key}"]`).forEach((element) => element.animate(
         [
           { transform: "scale(1.06)", filter: "brightness(1.9)" },
           { transform: "scale(1)", filter: "brightness(1)" },
         ],
         { duration: 160, easing: "ease-out" },
-      );
+      ));
     };
     return () => {
       engine.onPulse = null;
@@ -489,15 +491,10 @@ function Studio() {
         : `daytona: ${health.sandbox}`;
 
   return (
-    <div className="app">
+    <div className={`app ${session ? "has-session" : ""} ${studioOpen ? "studio-open" : ""}`}>
       <header>
-        <div className="brand">
-          LOOPSTACK<span>.</span>
-        </div>
-        <div className="vibe-info">{v ? `${v.label} · ${v.bpm} BPM · ${v.key}` : "no vibe yet"}</div>
-        <div className={`pill ${health?.mode === "daytona" && health.sandbox === "ready" ? "ok" : "warn"}`} title={health?.sandbox_error ?? ""}>
-          {sandboxLabel}
-        </div>
+        <a className="brand" href="#" aria-label="Loopstack home"><span className="brand-icon">≋</span> loopstack<span className="brand-dot">.</span></a>
+        <div className="vibe-info">{v ? `${v.label} · ${v.bpm} BPM · ${v.key}` : "YOUR EVERYDAY SOUNDS. REIMAGINED."}</div>
         <button
           className={`logs ${errorCount ? "has-errors" : ""}`}
           onClick={() => {
@@ -508,8 +505,9 @@ function Studio() {
         >
           logs{errorCount ? ` · ${errorCount}` : ""}
         </button>
+        <button className="studio-toggle" aria-expanded={studioOpen} aria-controls="studio-panel" onClick={() => setStudioOpen(!studioOpen)}>{studioOpen ? "Close studio ×" : "Studio controls ↗"}</button>
         <button className={`talk ${connected ? "on" : ""}`} onClick={toggleTalk}>
-          {connected ? (conversation.isSpeaking ? "Producer talking… (end)" : "Listening… (end)") : "Talk to the producer"}
+          {connected ? (conversation.isSpeaking ? "Producer talking… (end)" : "Listening… (end)") : "Connect producer"}
         </button>
       </header>
 
@@ -521,8 +519,31 @@ function Studio() {
 
       <main>
         <section className="stage">
-          <Visualizer getAgent={getAgent} analyser={engine.analyser} countIn={countIn} recording={recording} />
-          <div className="status">{status || (connected ? "Say a vibe, clap, hum, or ask for changes." : " ")}</div>
+          <Visualizer getAgent={getAgent} getMic={() => mic.getLevel()} analyser={engine.analyser} countIn={countIn} recording={recording} listening={connected} expanded={!!session} />
+          <div className="hero-copy">
+            <h1>LOOPSTACK.</h1>
+            <p>your sound. your music.</p>
+          </div>
+          <div className={`live-state ${recording ? "is-recording" : ""}`} role="status">
+            <span className="live-dot" />{countIn !== null && countIn > 0 ? `Count in · ${countIn}` : recording ? "Recording your sound" : status ? "Shaping your sound" : connected ? conversation.isSpeaking ? "Your producer is speaking" : "Listening to you" : transport === "started" ? "Your track is playing" : "Ready when you are"}
+          </div>
+          <form className="composer" onSubmit={(e) => { e.preventDefault(); if (vibeInput.trim() && !status && !recording) void safe(() => setVibe(vibeInput)); }}>
+            <button type="button" className={`mic-button ${connected ? "active" : ""}`} onClick={toggleTalk} aria-label={connected ? "Disconnect producer" : "Talk to producer"}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 10v2a6 6 0 0 0 12 0v-2M12 18v3M9 21h6"/></svg>
+            </button>
+            <input aria-label="Describe your musical vibe" value={vibeInput} onChange={(e) => setVibeInput(e.target.value)} placeholder="describe a sound, a feeling, a world…" disabled={recording} />
+            <span className="composer-hint">YOUR NEXT TRACK</span>
+            <button className="send-button" disabled={!vibeInput.trim() || !!status || recording} aria-label="Create this vibe">↗</button>
+          </form>
+          <div className="suggestions"><span>Try a mood</span>{PRESETS.slice(0,4).map((p) => <button key={p} disabled={!!status || recording} onClick={manual(() => setVibe(p))}>{p}</button>)}</div>
+          <div className="status" role="status">{status || (connected ? "Say a vibe, clap, hum, or ask for changes." : session ? "Add your sounds, or describe a new vibe." : "Connect your producer, or type a vibe to begin.")}</div>
+          <div className="sound-dock" aria-label="Add your sound">
+            <span className="dock-label">ADD A LITTLE YOU</span>
+            <button disabled={!!status || recording} onClick={manual(() => recordPart("drum"))}><span className="sound-symbol peach">✳</span>Clap or tap</button>
+            <button disabled={!!status || recording} onClick={manual(() => recordPart("melody"))}><span className="sound-symbol violet">∿</span>Hum a melody</button>
+            <button disabled={!!status || recording} onClick={manual(() => recordPart("bass"))}><span className="sound-symbol blue">≋</span>Add some bass</button>
+            <button disabled={!!status || recording} onClick={manual(() => recordPart("texture"))}><span className="sound-symbol pink">✧</span>Something else</button>
+          </div>
           {session && (
             <button className="transport" onClick={togglePlay} disabled={recording} title="Spacebar">
               {transport === "started" ? "❚❚  Pause" : "▶  Play"}
@@ -542,7 +563,9 @@ function Studio() {
           </div>
         </section>
 
-        <section className="side">
+        <section id="studio-panel" className="side" aria-label="Studio controls" hidden={!studioOpen}>
+          <div className="panel-heading"><div><span className="eyebrow">YOUR WORKSPACE</span><h2>The studio</h2></div><button onClick={() => setStudioOpen(false)} aria-label="Close studio">×</button></div>
+          <div className={`pill ${health?.mode === "daytona" && health.sandbox === "ready" ? "ok" : "warn"}`} title={health?.sandbox_error ?? ""}>{sandboxLabel}</div>
           <div className="card">
             <h3>Vibe</h3>
             <div className="chips">
@@ -555,10 +578,10 @@ function Studio() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (vibeInput.trim()) void safe(() => setVibe(vibeInput));
+                if (vibeInput.trim() && !status && !recording) void safe(() => setVibe(vibeInput));
               }}
             >
-              <input value={vibeInput} onChange={(e) => setVibeInput(e.target.value)} placeholder="or type one: rainy night lo-fi" />
+              <input aria-label="Studio vibe" value={vibeInput} onChange={(e) => setVibeInput(e.target.value)} placeholder="or type one: rainy night lo-fi" />
             </form>
           </div>
 
@@ -566,7 +589,7 @@ function Studio() {
             <h3>Parts</h3>
             {!session?.parts.length && <p className="muted">Clap, hum or make any sound to add a part.</p>}
             {session?.parts.map((p) => (
-              <div key={p.id} id={`pulse-${p.id}`} className={`part ${p.kind} ${p.muted ? "muted" : ""}`}>
+              <div key={p.id} id={`part-${p.id}`} className={`part ${p.kind} ${p.muted ? "muted" : ""}`}>
                 <div>
                   <b>{p.name}</b>
                   <span>
@@ -577,7 +600,7 @@ function Studio() {
                 </div>
                 <div className="part-actions">
                   {p.kind === "drum" && (
-                    <select value={p.slot} onChange={(e) => void safe(() => patchPart(p.name, { slot: e.target.value }, "Moved"))}>
+                    <select aria-label={`Drum slot for ${p.name}`} value={p.slot} onChange={(e) => void safe(() => patchPart(p.name, { slot: e.target.value }, "Moved"))}>
                       {SLOTS.map((s) => (
                         <option key={s}>{s}</option>
                       ))}
@@ -586,7 +609,7 @@ function Studio() {
                   <button onClick={manual(() => patchPart(p.name, { muted: !p.muted }, p.muted ? "Unmuted" : "Muted"))}>
                     {p.muted ? "unmute" : "mute"}
                   </button>
-                  <button onClick={manual(() => removePart(p.name))}>✕</button>
+                  <button aria-label={`Remove ${p.name}`} onClick={manual(() => removePart(p.name))}>✕</button>
                 </div>
               </div>
             ))}
@@ -626,6 +649,7 @@ function Studio() {
           </div>
         </section>
       </main>
+      <footer className="studio-footer"><span><span className="footer-dot" /> MADE FROM YOU</span><span>Headphones on. World off.</span><button disabled={!session || recording || !!status} onClick={manual(exportSong)}>Export track ↗</button>{exported && <a href={exported.url} download={`loopstack-${v?.genre ?? "track"}.wav`}>Download WAV ↓</a>}</footer>
       <DebugPanel
         open={debugOpen}
         onClose={() => setDebugOpen(false)}
