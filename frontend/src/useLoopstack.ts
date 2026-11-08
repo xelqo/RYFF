@@ -6,13 +6,15 @@ const POLL_MS = 1500;
 
 export type Building = { baseline: number; label: string; heard?: string } | null;
 
-export function useLoopstack(onReady: (version: Version, session: Session) => void) {
+export function useLoopstack(onReady: (version: Version, session: Session) => void, onFailed: (message: string) => void) {
   const [session, setSession] = useState<Session | null>(null);
   const [building, setBuilding] = useState<Building>(null);
   const [error, setError] = useState<string | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const onFailedRef = useRef(onFailed);
+  onFailedRef.current = onFailed;
   sessionRef.current = session;
   const sessionId = session?.id;
 
@@ -28,6 +30,12 @@ export function useLoopstack(onReady: (version: Version, session: Session) => vo
           cancelled = true;
           setBuilding(null);
           onReadyRef.current(fresh.versions[fresh.versions.length - 1], fresh);
+        } else if (fresh.status === "error") {
+          cancelled = true;
+          const message = fresh.error ?? "couldn't make that version";
+          setBuilding(null);
+          setError(message);
+          onFailedRef.current(message);
         }
       } catch (e) {
         if (!cancelled) setError(String(e));

@@ -36,12 +36,15 @@ export default function App() {
       setError(`Tap play to hear v${version.n} (${String(e)})`);
     }
     if (agentOn) conversation.sendContextualUpdate(readyMessage(version, session));
+  }, (message) => {
+    if (agentOn) conversation.sendContextualUpdate(`The new version failed to generate (${message}). Ask them to try again.`);
   });
   const { session, building, error, setError } = loop;
 
   const chooseVibe = async (text: string) => {
     const vibe = text.trim();
     if (!vibe) return "no vibe given";
+    if (building) return "still producing the last version, wait for the update";
     try {
       await loop.setVibe(vibe);
       return `generating a version for ${vibe}`;
@@ -163,7 +166,7 @@ export default function App() {
         <h2>{session ? `Vibe: ${session.vibe.text}` : "What vibe are we making?"}</h2>
         <div className="presets">
           {PRESETS.map((p) => (
-            <button key={p} className={session?.vibe.text === p ? "chip on" : "chip"} onClick={() => chooseVibe(p)}>
+            <button key={p} className={session?.vibe.text === p ? "chip on" : "chip"} onClick={() => chooseVibe(p)} disabled={Boolean(building)}>
               {p}
             </button>
           ))}
@@ -177,7 +180,7 @@ export default function App() {
           }}
         >
           <input value={vibeInput} onChange={(e) => setVibeInput(e.target.value)} placeholder="or type any vibe" />
-          <button type="submit">Set vibe</button>
+          <button type="submit" disabled={Boolean(building)}>Set vibe</button>
         </form>
       </section>
 

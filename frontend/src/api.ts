@@ -1,4 +1,4 @@
-import { mockApi } from "../mock/mockApi";
+import { realApi } from "./realApi";
 import type { Api } from "./types";
 
-export const api: Api = mockApi;
+export const api: Api = realApi;

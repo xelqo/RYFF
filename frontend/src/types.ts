@@ -39,7 +39,8 @@ export interface Session {
   parts: Part[];
   versions: Version[];
   seed: number;
-  status?: "building" | "ready";
+  status?: "building" | "ready" | "error";
+  error?: string | null;
 }
 
 export type AddPartResult = { part: Part; status: "building" } | { error: string };
