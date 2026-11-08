@@ -72,6 +72,7 @@ export default function App() {
 }
 
 function Studio() {
+  const [entered, setEntered] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [session, setSessionState] = useState<Session | null>(null);
   const sessionRef = useRef<Session | null>(null);
@@ -523,26 +524,32 @@ function Studio() {
     }
   }
 
+  function enterStudio() {
+    setEntered(true);
+    void toggleTalk();
+  }
+
   const countIn = rec.phase === "countin" ? rec.n : rec.phase === "recording" ? 0 : null;
   const orbState = countIn !== null && countIn > 0 ? `Count in · ${countIn}`
     : rec.phase === "waiting" ? "Get ready" : rec.phase === "recording" ? "Recording" : status ? "Processing" : connecting ? "Connecting"
     : connected ? conversation.isSpeaking ? "Speaking" : "Listening" : "Click to talk";
 
   return (
-    <div className={`app ${session ? "has-session" : ""}`}>
+    <div className={`app ${session ? "has-session" : ""} ${entered ? "entered" : "welcome"}`}>
       <main>
-        <section className="stage" aria-label="Loopstack voice studio">
+        <section className="stage" aria-label="RYFF voice studio" onPointerMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty("--pointer-x", `${((e.clientX-r.left)/r.width-.5)*24}px`); e.currentTarget.style.setProperty("--pointer-y", `${((e.clientY-r.top)/r.height-.5)*24}px`); }} onPointerLeave={(e) => { e.currentTarget.style.setProperty("--pointer-x", "0px"); e.currentTarget.style.setProperty("--pointer-y", "0px"); }}>
           <Visualizer getAgent={getAgent} getMic={() => mic.getLevel()} analyser={engine.analyser} countIn={countIn} recording={recording} listening={connected} expanded={!!session} />
+          <button className="ryff-wordmark" onClick={enterStudio} disabled={entered} aria-label="Enter RYFF voice studio">RYFF.</button>
           <div className="orb-anchor">
             <button className={`voice-orb ${connected ? "connected" : ""} ${recording ? "recording" : ""} ${status || connecting ? "processing" : ""}`}
-              onClick={toggleTalk} disabled={connecting || recording}
+              onClick={entered ? toggleTalk : enterStudio} disabled={connecting || recording}
               aria-label={connected ? "Disconnect producer" : "Connect producer"}
-              aria-pressed={connected} title={connected ? "Click to end conversation" : "Click to talk to Loopstack"}>
+              aria-pressed={connected} title={connected ? "Click to end conversation" : "Click to talk to RYFF"}>
               <span className="orb-core" /><span className="orb-glint" />
             </button>
             <div className="orb-status" role="status">{orbState}</div>
             {error && <button className="orb-error" onClick={() => setError(null)}>{error}</button>}
-            {exported && <a className="orb-download" href={exported.url} download={`loopstack-${session?.vibe.genre ?? "track"}.wav`}>Download track ↓</a>}
+            {exported && <a className="orb-download" href={exported.url} download={`ryff-${session?.vibe.genre ?? "track"}.wav`}>Download track ↓</a>}
           </div>
         </section>
       </main>
