@@ -31,7 +31,7 @@ def to_wav(path: Path) -> Path:
     ff = _ffmpeg()
     if not ff:
         raise RuntimeError("ffmpeg not found; send WAV from the browser or install ffmpeg")
-    out = path.with_suffix(".wav")
+    out = path.with_name(path.stem + ".conv.wav")   # never overwrite the input (it may be named .wav)
     # -t 15: uploaded files can be whole songs; the first 15 s is plenty to read the feel
     subprocess.run([ff, "-v", "error", "-y", "-i", str(path), "-t", "15", "-ac", "1", "-ar", "44100", "-sample_fmt", "s16", str(out)],
                    check=True, timeout=60)

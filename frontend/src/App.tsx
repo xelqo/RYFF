@@ -223,7 +223,7 @@ export default function App() {
             </button>
             <div>
               <div className="now">{player.current ? `v${player.current}` : "Ready"}</div>
-              <div className="muted">{session.vibe.text} · {session.vibe.bpm} BPM</div>
+              <div className="muted">{session.vibe.text}{session.vibe.bpm ? ` · ${session.vibe.bpm} BPM` : ""}</div>
             </div>
             <button className="ghost download" onClick={downloadSong} disabled={player.current === null}>Download</button>
           </div>

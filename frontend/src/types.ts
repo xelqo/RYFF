@@ -30,7 +30,7 @@ export interface Version {
 export interface Vibe {
   text: string;
   styles: string[];
-  bpm: number;
+  bpm: number | null;
 }
 
 export interface Session {

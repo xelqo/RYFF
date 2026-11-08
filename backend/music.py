@@ -40,7 +40,13 @@ def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_word
     main = max(3000, total - intro)
 
     words = [w for p in parts for w in p.get("words", [])]
-    positive = list(vibe["styles"]) + [f"{vibe['bpm']} BPM", "instrumental", "great production quality"] + words
+    # The user's own words lead: the preset (nearest of 4 genres) only adds tempo/instruments/support styles.
+    own = (vibe.get("text") or "").strip()
+    styles = ([own] if own else []) + [s for s in vibe["styles"] if s.lower() != own.lower()]
+    if own and vibe.get("name") and vibe["name"] not in own.lower().replace("-", "").replace(" ", ""):
+        styles = styles[:1] + styles[2:]      # drop the preset's genre label when the user asked for something else
+    tempo = [f"{vibe['bpm']} BPM"] if vibe.get("bpm") else []
+    positive = styles + tempo + ["instrumental", "great production quality"] + words
     negative = list(dict.fromkeys(list(vibe.get("negative_styles", [])) + ["vocals", "singing", "spoken word"]))
 
     first = {

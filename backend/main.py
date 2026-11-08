@@ -55,9 +55,23 @@ def get_session(sid: str) -> dict:
     return s
 
 
+GENERIC_INSTRUMENTS = {"drums": "drums", "bass": "bassline", "melody": "melodic backing part", "texture": "ambient texture"}
+
+
 def make_vibe(text: str) -> dict:
-    v = vibe_from_text(text)
-    return {"text": text, **v}
+    v = {"text": text, **vibe_from_text(text)}
+    try:
+        from vibes import KEYWORDS
+        keys = KEYWORDS.get(v["name"], ())
+    except ImportError:
+        keys = ()
+    norm = " " + " ".join("".join(c if c.isalnum() else " " for c in text.lower()).split()) + " "
+    if not any(f" {k} " in norm for k in (*keys, v["name"])):
+        # Not one of the presets (e.g. "dreamy synthwave"): use only the user's words, let the model pick the tempo
+        v.update(styles=[], bpm=None, instruments=dict(GENERIC_INSTRUMENTS), matched=False)
+    else:
+        v["matched"] = True
+    return v
 
 
 def build_version(sid: str, reason: str, new_words: list[str] | None, from_version: int | None,

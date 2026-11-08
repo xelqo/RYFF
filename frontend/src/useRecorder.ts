@@ -72,7 +72,14 @@ export function useRecorder() {
       clearInterval(ticker);
       clearTimeout(timer);
       stream.getTracks().forEach((t) => t.stop());
-      return await toWav(new Blob(chunks, { type: recorder.mimeType }));
+      const raw = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      if (!raw.size) throw new Error("No audio was captured. Check the mic permission and try again.");
+      try {
+        return await toWav(raw);
+      } catch {
+        // Safari can't decode its own MediaRecorder output (EncodingError); the backend converts it with ffmpeg
+        return raw;
+      }
     } finally {
       stopRef.current = null;
       setSecondsLeft(0);
