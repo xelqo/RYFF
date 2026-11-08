@@ -36,8 +36,10 @@ You don't click through Loopstack, you talk to it. The agent runs the app throug
 | "Lose the keys" | `remove_part(part)` | `DELETE /api/sessions/{id}/parts/{pid}` |
 | "Fill it out" | `add_backing(style)` | `POST /api/sessions/{id}/backing` (doesn't block the conversation) |
 | "I'm done" | `export_song()` | rendered in the browser (`Tone.Offline`) |
+| "Pause the music" / "bring it back" | `pause_music()` / `resume_music()` | browser only |
 
-While a part records, the app mutes the agent's mic so it doesn't hear the clap as an interruption.
+While a part records, the app mutes the agent's mic so it doesn't hear the clap as an interruption. While the
+producer talks, the music fades out so voice and beat never overlap. Spacebar pauses/plays.
 
 ## How it works
 ```

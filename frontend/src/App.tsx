@@ -69,6 +69,8 @@ function Studio() {
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [vibeInput, setVibeInput] = useState("");
+  const [transport, setTransport] = useState<"started" | "paused" | "stopped">("stopped");
+  const [quietWhileTalking, setQuietWhileTalking] = useState(true);
   const busy = useRef(false);
 
   const log = useCallback((who: Line["who"], text: string) => {
@@ -162,6 +164,7 @@ function Studio() {
       } else {
         preRoll = PRE_ROLL;
         steps = HUM_STEPS;
+        engine.duck(false); // the beat must be audible while you hum along
         setStatus("Count-in… then go on the 1");
         const downbeat = engine.playWithCountIn(s, (n) => setCountIn(n));
         const recSeconds = steps * (60 / s.vibe.bpm / 4);
@@ -238,6 +241,24 @@ function Studio() {
     }
   }
 
+  function pauseMusic(): string {
+    if (!engine.running) return "The music is already paused.";
+    engine.pause();
+    return "Music paused.";
+  }
+
+  function resumeMusic(): string {
+    const s = sessionRef.current;
+    if (!s) return "There's no song yet. Set a vibe first.";
+    if (engine.paused) engine.resume();
+    else if (!engine.running) engine.play(s);
+    return "Music is playing again.";
+  }
+
+  function togglePlay() {
+    log("app", engine.running ? pauseMusic() : resumeMusic());
+  }
+
   async function exportSong(): Promise<string> {
     const s = sessionRef.current;
     if (!s) return "There's no song yet. Set a vibe first.";
@@ -284,6 +305,33 @@ function Studio() {
     return "Composing the backing track now. It will fade in by itself in about 20 to 40 seconds.";
   });
   useConversationClientTool("export_song", () => safe(exportSong));
+  useConversationClientTool("pause_music", () => safe(async () => pauseMusic()));
+  useConversationClientTool("resume_music", () => safe(async () => resumeMusic()));
+
+  // Music fades out while the producer talks, so voice and beat never fight (and the mic doesn't hear the beat).
+  useEffect(() => {
+    engine.duck(quietWhileTalking && connected && conversation.isSpeaking);
+  }, [quietWhileTalking, connected, conversation.isSpeaking]);
+
+  // Keep the play/pause button in sync with the transport (the agent can pause too).
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTransport(engine.running ? "started" : engine.paused ? "paused" : "stopped");
+    }, 200);
+    return () => clearInterval(id);
+  }, []);
+
+  // Spacebar = play/pause (unless you're typing).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (e.code !== "Space" || tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || busy.current) return;
+      e.preventDefault();
+      togglePlay();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   // ------------------------------------------------------------ effects
   useEffect(() => {
@@ -383,6 +431,11 @@ function Studio() {
         <section className="stage">
           <Visualizer getAgent={getAgent} analyser={engine.analyser} countIn={countIn} recording={recording} />
           <div className="status">{status || (connected ? "Say a vibe, clap, hum, or ask for changes." : " ")}</div>
+          {session && (
+            <button className="transport" onClick={togglePlay} disabled={recording} title="Spacebar">
+              {transport === "started" ? "❚❚  Pause" : "▶  Play"}
+            </button>
+          )}
           <div className="beat">
             {v &&
               SLOTS.map((slot) => {
@@ -455,11 +508,15 @@ function Studio() {
               <button onClick={manual(() => recordPart("bass"))}>● hum bass</button>
               <button onClick={manual(() => recordPart("texture"))}>● texture</button>
               <button onClick={() => void addBacking()}>+ backing track</button>
-              <button onClick={() => (engine.running ? engine.stop() : session && engine.play(session))}>play / stop</button>
+              <button onClick={togglePlay}>{transport === "started" ? "pause" : "play"}</button>
               <button className="primary" onClick={manual(exportSong)}>
                 export
               </button>
             </div>
+            <label className="toggle">
+              <input type="checkbox" checked={quietWhileTalking} onChange={(e) => setQuietWhileTalking(e.target.checked)} />
+              Fade the music out while the producer talks
+            </label>
             {exported && (
               <a className="download" href={exported.url} download={`loopstack-${v?.genre ?? "track"}.wav`}>
                 ⬇ Download your {Math.round(exported.seconds)}-second track

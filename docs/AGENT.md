@@ -11,12 +11,13 @@ Set this up once in the ElevenLabs dashboard (**Agents → Create agent → Blan
 | Voice | any voice you like; a custom or cloned voice helps for the ElevenLabs prize |
 | Languages | English + **Spanish** (the agent switches when the user does) |
 | Security | authentication **off**, so the browser connects with just the agent ID |
-| Turn-taking | keep interruptions on; a slightly eager turn timeout keeps it snappy |
+| Turn-taking | keep interruptions on, so the producer stops talking as soon as you speak; a slightly eager turn timeout keeps it snappy |
+| Music vs voice | the app fades the music out while the producer talks (toggle in Manual controls), so they never overlap |
 | Knowledge base (optional) | upload a short "how Loopstack works" note so it can answer judge questions |
 
 ## Client tools
 Add each one under **Tools → Add tool → Client**. Names and parameter names must match exactly.
-Turn on **Wait for response** for every tool except `add_backing`.
+Turn on **Wait for response** for every tool except `add_backing`. (9 tools in total.)
 
 | Tool | Description (paste this) | Parameters | Wait for response |
 |---|---|---|---|
@@ -27,6 +28,8 @@ Turn on **Wait for response** for every tool except `add_backing`.
 | `remove_part` | Delete a part from the song. | `part` (string, required) | on |
 | `add_backing` | Compose a full backing track under the song with ElevenLabs Music. Takes 20 to 40 seconds and plays by itself when ready. | `style` (string, optional): extra style words | **off** |
 | `export_song` | Render the finished song to a downloadable 15-second WAV. This is the finish line. | none | on |
+| `pause_music` | Pause the music (keeps its place). | none | on |
+| `resume_music` | Play the music again from where it paused. | none | on |
 
 ## System prompt (paste this)
 ```
@@ -48,6 +51,7 @@ Flow:
    "Actually make it trap" or any new style -> set_vibe again (parts are kept, hums move to the new key).
 5. "Fill it out", "make it fuller", "add music" -> add_backing, say it'll fade in shortly, then keep talking.
 6. When they're happy or say they're done -> export_song, then tell them it's ready to download.
+7. "Pause", "stop the music", "quiet" -> pause_music. "Play", "bring it back" -> resume_music.
 
 Rules:
 - Only describe what a tool result says happened. If a tool returns an error, say so simply and offer to retry.

@@ -6,6 +6,8 @@ import { SLOTS, type Session, type Slot } from "./types";
 type Disposable = { dispose: () => unknown };
 const DRUM_NOTE = "C4"; // drum samples are mapped to MIDI 60 and always triggered at C4 (no pitch shift)
 const KIT_GAIN: Record<Slot, number> = { kick: 0, snare: -2, hat: -9, perc: -8 };
+const MASTER_DB = -3;
+const DUCKED_DB = -60; // effectively silent while the producer talks
 
 /**
  * The audio engine. The browser owns playback: every change rebuilds the arrangement from the
@@ -18,9 +20,10 @@ class Engine {
   private buffers = new Map<string, AudioBuffer>();
   private roots = new Map<string, number | null>();
   private live: Disposable[] = [];
+  private ducked = false;
 
   constructor() {
-    this.master = new Tone.Volume(-3).toDestination();
+    this.master = new Tone.Volume(MASTER_DB).toDestination();
     this.analyser = new Tone.Analyser("fft", 64);
     this.master.connect(this.analyser);
   }
@@ -221,8 +224,32 @@ class Engine {
     Tone.getTransport().stop();
   }
 
+  /** Pause keeps the loop position; resume continues from the same spot. */
+  pause() {
+    const t = Tone.getTransport();
+    if (t.state === "started") t.pause();
+  }
+
+  resume() {
+    const t = Tone.getTransport();
+    if (t.state === "paused") t.start();
+  }
+
   get running() {
     return Tone.getTransport().state === "started";
+  }
+
+  get paused() {
+    return Tone.getTransport().state === "paused";
+  }
+
+  /** Fade the music out (on) or back in (off), e.g. while the producer is talking. */
+  duck(on: boolean) {
+    if (on === this.ducked) return;
+    this.ducked = on;
+    const vol = this.master.volume;
+    vol.cancelScheduledValues(Tone.now());
+    vol.rampTo(on ? DUCKED_DB : MASTER_DB, on ? 0.15 : 0.6);
   }
 
   /** 4 count-in clicks, then the song starts on "1". Returns the AudioContext time of that downbeat. */

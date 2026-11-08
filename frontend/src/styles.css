@@ -43,7 +43,14 @@ main { flex: 1; display: grid; grid-template-columns: 1fr 420px; min-height: 0; 
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 96px; font-weight: 800; color: #0b0b12; pointer-events: none; mix-blend-mode: normal;
 }
-.status { color: var(--dim); min-height: 1.4em; margin: 8px 0 14px; text-align: center; }
+.status { color: var(--dim); min-height: 1.4em; margin: 8px 0 10px; text-align: center; }
+.transport {
+  margin-bottom: 14px; padding: 10px 26px; font-size: 16px; font-weight: 700; border-radius: 99px;
+  background: #1d1d2e; border-color: #3b3b6b;
+}
+.transport:disabled { opacity: 0.4; cursor: default; }
+.toggle { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--dim); cursor: pointer; }
+.toggle input { width: auto; margin: 0; }
 .beat { display: flex; gap: 10px; }
 .slot {
   width: 96px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
