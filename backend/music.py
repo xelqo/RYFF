@@ -24,8 +24,19 @@ def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_word
     prev_song_id: condition the first chunk on the previous version (None for v1 and vibe changes).
     new_words:    the part that was just added, so the main chunk can announce it.
     """
+    # CONDITION_MODE (step 0 results, see docs/APIS.md):
+    #   short: only a 3 s intro is conditioned on the previous version, main chunk has low context adherence.
+    #          Intro keeps the old beat, then the new part clearly "drops in". (default)
+    #   none:  no conditioning, same seed → new part audible, song stays loosely similar.
+    #   full:  8 s conditioned intro, high adherence → keeps the beat but new parts are barely audible.
+    mode = os.environ.get("CONDITION_MODE", "short")
+    if mode == "none":
+        prev_song_id = None
     total = _env_int("VERSION_MS", 20000)
-    intro = min(8000, max(3000, total // 3))
+    if prev_song_id and mode == "short":
+        intro = _env_int("COND_INTRO_MS", 3000)
+    else:
+        intro = min(8000, max(3000, total // 3))
     main = max(3000, total - intro)
 
     words = [w for p in parts for w in p.get("words", [])]
@@ -43,6 +54,8 @@ def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_word
         first["condition_strength"] = os.environ.get("CONDITION_STRENGTH", "high")
     main_text = "[Main]\n{" + (", ".join(new_words) + " enters" if new_words else "full groove") + "}"
     second = {"text": main_text, "duration_ms": main, "positive_styles": positive, "negative_styles": negative}
+    if prev_song_id and mode == "short":
+        second["context_adherence"] = os.environ.get("MAIN_ADHERENCE", "low")
     return {"chunks": [first, second]}
 
 
