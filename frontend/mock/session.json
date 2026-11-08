@@ -1,0 +1,20 @@
+{
+  "id": "mock-session",
+  "vibe": { "text": "chill lo-fi", "styles": ["chill lo-fi hip hop", "dusty rhodes", "vinyl crackle"], "bpm": 80 },
+  "parts": [
+    {
+      "id": "part-1",
+      "kind": "drums",
+      "raw_url": "/mock-audio/take.wav",
+      "hit_url": "/mock-audio/hit.wav",
+      "traits": { "busyness": 0.72, "punch": 0.81, "brightness": 0.64, "length_s": 4.1 },
+      "words": ["driving, busy drums", "punchy claps"]
+    }
+  ],
+  "versions": [
+    { "n": 1, "song_id": "mock-1", "url": "/mock-audio/v1.wav", "plan": {}, "created_at": "2026-11-08T14:00:00Z" },
+    { "n": 2, "song_id": "mock-2", "url": "/mock-audio/v2.wav", "plan": {}, "created_at": "2026-11-08T14:02:00Z" }
+  ],
+  "seed": 1234,
+  "status": "ready"
+}
