@@ -170,3 +170,27 @@ input {
   height: clamp(100px, 22vw, 180px);
   display: block;
 }
+
+.record {
+  min-width: 140px;
+  min-height: 64px;
+  font-size: 1.2rem;
+}
+
+.record.on {
+  background: #ff3b3b;
+  color: #fff;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.take {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 12px rgba(255, 59, 59, 0.25);
+  }
+}

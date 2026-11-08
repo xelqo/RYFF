@@ -3,6 +3,7 @@ import { useConversation, useConversationClientTool } from "@elevenlabs/react";
 import { api } from "./api";
 import { useLoopstack } from "./useLoopstack";
 import { usePlayer } from "./usePlayer";
+import { useRecorder } from "./useRecorder";
 import { Visualiser } from "./Visualiser";
 import type { Session, Version } from "./types";
 
@@ -18,7 +19,9 @@ function readyMessage(version: Version, session: Session) {
 export default function App() {
   const [vibeInput, setVibeInput] = useState("");
   const player = usePlayer();
-  const agentMuted = player.playing;
+  const recorder = useRecorder();
+  const [lastTake, setLastTake] = useState<string | null>(null);
+  const agentMuted = player.playing || recorder.recording;
   const conversation = useConversation({ micMuted: agentMuted });
   const agentOn = conversation.status === "connected";
 
@@ -45,6 +48,13 @@ export default function App() {
   };
 
   useConversationClientTool("set_vibe", async (params) => chooseVibe(String(params.vibe_text ?? "")));
+
+  const recordTake = async () => {
+    player.pause();
+    const take = await recorder.record();
+    setLastTake(URL.createObjectURL(take));
+    return take;
+  };
 
   const startAgent = async () => {
     setError(null);
@@ -110,6 +120,18 @@ export default function App() {
             </div>
           </div>
           <Visualiser analyser={player.analyser} active={player.playing} />
+        </section>
+      )}
+
+      {session && (
+        <section className="card">
+          <h2>{recorder.recording ? (recorder.secondsLeft ? `Recording… ${recorder.secondsLeft}` : "Get ready…") : "Add a sound"}</h2>
+          {recorder.recording ? (
+            <button className="record on" onClick={recorder.stop}>Stop</button>
+          ) : (
+            <button className="record" onClick={() => recordTake().catch((e) => setError(String(e)))}>Record</button>
+          )}
+          {lastTake && !recorder.recording && <audio className="take" src={lastTake} controls />}
         </section>
       )}
 
