@@ -92,7 +92,7 @@ def build_version(sid: str, reason: str, new_words: list[str] | None, from_versi
                     cached_mp3.write_bytes(audio)
                     cached_id.write_text(song_id or "")
 
-            hits = [p["_raw_path"] for p in s["parts"] if p["kind"] == "drums"]
+            hits = [p["_hit_path"] for p in s["parts"] if p["kind"] == "drums" and p.get("_hit_path")]
             mixed = Path(runner.mix(str(raw), hits)) if hits else raw
             s["versions"].append({
                 "n": n, "song_id": song_id, "url": url_for(mixed), "plan": plan, "reason": reason,
@@ -117,7 +117,8 @@ class VibeIn(BaseModel):
 @app.get("/health")
 def health():
     return {"ok": True, "elevenlabs_key": bool(os.environ.get("ELEVENLABS_API_KEY")),
-            "agent_id": bool(os.environ.get("ELEVENLABS_AGENT_ID")), "runner": type(runner).__name__}
+            "agent_id": bool(os.environ.get("ELEVENLABS_AGENT_ID")), "runner": type(runner).__name__,
+            **(runner.status() if hasattr(runner, "status") else {})}
 
 
 @app.post("/sessions")
@@ -154,13 +155,20 @@ def add_part(sid: str, bg: BackgroundTasks, audio: UploadFile = File(...), kind:
     raw = DATA / sid / f"part_{pid}{ext}"
     raw.write_bytes(audio.file.read())
 
-    traits = runner.analyse(str(raw), kind)
+    try:
+        traits = runner.analyse(str(raw), kind, bpm=s["vibe"]["bpm"])
+    except TypeError:                      # stub runner takes no bpm
+        traits = runner.analyse(str(raw), kind)
     if traits.get("error"):
         raw.unlink(missing_ok=True)
         return {"part": None, "status": s["status"], "error": traits["error"]}   # agent: "too quiet, ask again"
 
+    hit_path = traits.pop("_hit_path", None)
     words = traits_to_words(kind, traits, s["vibe"])
-    part = {"id": pid, "kind": kind, "raw_url": url_for(raw), "traits": traits, "words": words, "_raw_path": str(raw)}
+    part = {"id": pid, "kind": kind, "raw_url": url_for(raw), "traits": traits, "words": words,
+            "_raw_path": str(raw), "_hit_path": hit_path}
+    if hit_path:
+        part["hit_url"] = url_for(Path(hit_path))
     s["parts"].append(part)
     s["status"] = "building"
     bg.add_task(build_version, sid, f"added {kind}", words, from_version, True)

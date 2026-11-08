@@ -22,9 +22,14 @@ versions: [{n, url, song_id, reason, conditioned, from_version, plan}], status: 
 
 Generations run one at a time per session, in request order. If two parts arrive fast, both versions get built.
 
+## Daytona
+`analysis.py` adapts Derik's `runners.py` + `sandbox/analyse.py` (one warm sandbox for the server) into traits and
+a cut-out hit sample per drum part (`hit_url`). Needs `DAYTONA_API_KEY`; `LOCAL_ANALYSIS_FALLBACK=1` runs the same
+script locally while developing. Uploads can be webm/ogg/mp4/wav (converted with ffmpeg). Mixing the hit into each
+version (`mix()` in `analysis.py`) is still a pass-through: Derik's next task (`sandbox/mix.py`).
+
 ## Teammate modules
-`contrib.py` imports `vibes.py` / `words.py` (Avi) and `daytona_runner.py` (Derik) and uses built-in stand-ins
-until they exist. The interfaces are documented at the top of `contrib.py`. Drop your file into `backend/` and it's
+`contrib.py` imports `vibes.py` / `words.py` (Avi) and uses built-in stand-ins until they exist. The interfaces are documented at the top of `contrib.py`. Drop your file into `backend/` and it's
 picked up on restart.
 
 ## Tuning (`.env`)

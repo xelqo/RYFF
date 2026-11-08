@@ -82,10 +82,11 @@ except ImportError:
 
 # ---------------------------------------------------------------- Daytona (Derik)
 try:
-    from daytona_runner import DaytonaRunner  # type: ignore
-    runner = DaytonaRunner()
-    log.info("using backend/daytona_runner.py")
-except ImportError:
+    from analysis import AnalysisRunner  # Derik's runners.py + sandbox/analyse.py, adapted to traits
+    runner = AnalysisRunner()
+    log.info("using Daytona analysis (runners.py)")
+except ImportError as e:
+    log.warning("runners.py unavailable (%s)", e)
     import random
     import shutil
 
