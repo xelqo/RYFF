@@ -7,10 +7,12 @@ import { mic } from "./recorder";
 import { encodeWav } from "./wav";
 import Visualizer from "./Visualizer";
 import DebugPanel from "./DebugPanel";
+import { type RecState } from "./RecordOverlay";
 import { debug, fmt } from "./debug";
 import { SLOTS, type Health, type Part, type Session, type Slot } from "./types";
 
 const AGENT_ID = (import.meta.env.VITE_ELEVENLABS_AGENT_ID as string | undefined)?.trim();
+const PRESETS = ["chill lo-fi", "dark trap", "summer house", "90s boom bap", "happy pop", "dreamy ambient"];
 const HIT_SECONDS = 3;
 const HUM_STEPS = 32; // hums and textures are 2 bars, looped
 const PRE_ROLL = 0.15;
@@ -74,14 +76,16 @@ function Studio() {
   const [session, setSessionState] = useState<Session | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const [status, setStatus] = useState("");
-  const [countIn, setCountIn] = useState<number | null>(null);
   const [recording, setRecording] = useState(false);
+  const [rec, setRec] = useState<RecState>({ phase: "idle" });
   const [lines, setLines] = useState<Line[]>([]);
   const [exported, setExported] = useState<{ url: string; seconds: number } | null>(null);
   const [health, setHealth] = useState<Health | null | undefined>(undefined); // undefined = not checked yet
   const [error, setError] = useState<string | null>(null);
+  const [vibeInput, setVibeInput] = useState("");
   const [transport, setTransport] = useState<"started" | "paused" | "stopped">("stopped");
   const [quietWhileTalking, setQuietWhileTalking] = useState(true);
+  const [beatWhileHumming, setBeatWhileHumming] = useState(false); // full beat during hums: headphones only
   const [debugOpen, setDebugOpen] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
   const [micPermission, setMicPermission] = useState("unknown");
@@ -125,10 +129,27 @@ function Studio() {
     engine.play(s);
   }
 
+  /** Wait until the producer has been silent for a moment (it often adds a word after the tool call). */
   async function waitForAgentToFinish() {
-    const until = Date.now() + 6000;
-    while (convRef.current.isSpeaking && Date.now() < until) await sleep(100);
-    await sleep(250);
+    if (convRef.current.status !== "connected") return;
+    const until = Date.now() + 4000;
+    let quietSince = convRef.current.isSpeaking ? 0 : Date.now();
+    while (Date.now() < until) {
+      if (convRef.current.isSpeaking) quietSince = 0;
+      else if (!quietSince) quietSince = Date.now();
+      if (quietSince && Date.now() - quietSince >= 700) return;
+      await sleep(50);
+    }
+    debug.warn("record", "The producer was still talking after 4 s; recording anyway (its voice is muted)");
+  }
+
+  /** Silence the producer's speaker output so its voice can never end up in a take. */
+  function setAgentVolume(volume: number) {
+    try {
+      if (convRef.current.status === "connected") convRef.current.setVolume({ volume });
+    } catch {
+      /* not connected */
+    }
   }
 
   function setAgentMic(muted: boolean) {
@@ -175,30 +196,52 @@ function Studio() {
       await Tone.start();
       if (!sessionRef.current) await setVibe("chill lo-fi");
       const s = sessionRef.current!;
+      setRec({ phase: "waiting" });
       await waitForAgentToFinish();
       setAgentMic(true); // otherwise the agent hears your clap as an interruption
+      setAgentVolume(0); // and its voice can't leak into the take
       setRecording(true);
       let take: { samples: Float32Array; sampleRate: number };
       let preRoll = 0;
       let steps = HUM_STEPS;
       if (kind === "drum") {
         engine.stop(); // record the hit clean, without the beat bleeding in
-        setCountIn(0);
-        setStatus(`Recording for ${HIT_SECONDS} seconds: make your sound a few times`);
-        const start = Tone.now() + 0.05;
+        setStatus("3, 2, 1… then clap");
+        // 3 beeps (the last one higher) from the app, then recording starts once they've died away
+        const t0 = Tone.now() + 0.15;
+        const gap = 0.5;
+        for (let i = 0; i < 3; i++) {
+          engine.beep(t0 + i * gap, i === 2 ? "A5" : "E5");
+          Tone.getDraw().schedule(() => setRec({ phase: "countin", n: 3 - i, kind }), t0 + i * gap);
+        }
+        const start = t0 + 2 * gap + 0.25;
+        Tone.getDraw().schedule(() => {
+          setRec({ phase: "recording", kind, endsAt: performance.now() + HIT_SECONDS * 1000, total: HIT_SECONDS * 1000 });
+          setStatus(`Recording for ${HIT_SECONDS} seconds: clap or tap a few times`);
+        }, start);
         take = await mic.capture(start, start + HIT_SECONDS);
       } else {
         preRoll = PRE_ROLL;
         steps = HUM_STEPS;
         engine.duck(false); // the beat must be audible while you hum along
-        setStatus("Count-in… then go on the 1");
-        const downbeat = engine.playWithCountIn(s, (n) => setCountIn(n));
+        setStatus(beatWhileHumming ? "Count-in… then go on the 1" : "Count-in… then go on the 1 (clicks only, the beat comes back after)");
         const recSeconds = steps * (60 / s.vibe.bpm / 4);
+        const downbeat = engine.playWithCountIn(
+          s,
+          (n) =>
+            n > 0
+              ? setRec({ phase: "countin", n, kind })
+              : setRec({ phase: "recording", kind, endsAt: performance.now() + recSeconds * 1000, total: recSeconds * 1000 }),
+          beatWhileHumming,
+          steps / 4,
+        );
         take = await mic.capture(downbeat - preRoll, downbeat + recSeconds + 0.2);
       }
+      engine.doneChime(); // audible "recording stopped"
+      setRec({ phase: "analysing" });
       setRecording(false);
-      setCountIn(null);
       setAgentMic(false);
+      setAgentVolume(1);
       setStatus("Analysing your take in the Daytona sandbox…");
       debug.info("record", `Uploading ${kind} take (${(take.samples.length / take.sampleRate).toFixed(1)} s) for analysis`);
       const wav = encodeWav([take.samples], take.sampleRate);
@@ -219,9 +262,10 @@ function Studio() {
       return `That take didn't work: ${errMsg(e)}`;
     } finally {
       busy.current = false;
+      setRec({ phase: "idle" });
       setRecording(false);
-      setCountIn(null);
       setAgentMic(false);
+      setAgentVolume(1);
       setStatus("");
     }
   }
@@ -340,8 +384,9 @@ function Studio() {
 
   // Music fades out while the producer talks, so voice and beat never fight (and the mic doesn't hear the beat).
   useEffect(() => {
-    engine.duck(quietWhileTalking && connected && conversation.isSpeaking);
-  }, [quietWhileTalking, connected, conversation.isSpeaking]);
+    // never duck during a take: you need to hear the beat while humming
+    engine.duck(quietWhileTalking && connected && conversation.isSpeaking && !recording);
+  }, [quietWhileTalking, connected, conversation.isSpeaking, recording]);
 
   // Keep the play/pause button in sync with the transport (the agent can pause too).
   useEffect(() => {
@@ -351,7 +396,7 @@ function Studio() {
     return () => clearInterval(id);
   }, []);
 
-  // Keep errors discoverable without interrupting the canvas.
+  // Error terminal: count errors and pop it open when something goes wrong.
   useEffect(() => {
     let seen = debug.entries.length;
     return debug.subscribe((entries) => {
@@ -360,7 +405,7 @@ function Studio() {
       const errors = fresh.filter((e) => e.level === "error").length;
       if (errors) {
         setErrorCount((c) => c + errors);
-        // Keep errors visible in the logs badge without repeatedly covering the studio.
+        // Errors stay in the keyboard-accessible debug panel.
       }
     });
   }, []);
@@ -434,13 +479,13 @@ function Studio() {
 
   useEffect(() => {
     engine.onPulse = (key) => {
-      document.querySelectorAll(`[id="pulse-${key}"], [id="part-${key}"]`).forEach((element) => element.animate(
+      document.getElementById(`pulse-${key}`)?.animate(
         [
           { transform: "scale(1.06)", filter: "brightness(1.9)" },
           { transform: "scale(1)", filter: "brightness(1)" },
         ],
         { duration: 160, easing: "ease-out" },
-      ));
+      );
     };
     return () => {
       engine.onPulse = null;
@@ -478,8 +523,9 @@ function Studio() {
     }
   }
 
+  const countIn = rec.phase === "countin" ? rec.n : rec.phase === "recording" ? 0 : null;
   const orbState = countIn !== null && countIn > 0 ? `Count in · ${countIn}`
-    : recording ? "Recording" : status ? "Processing" : connecting ? "Connecting"
+    : rec.phase === "waiting" ? "Get ready" : rec.phase === "recording" ? "Recording" : status ? "Processing" : connecting ? "Connecting"
     : connected ? conversation.isSpeaking ? "Speaking" : "Listening" : "Click to talk";
 
   return (
