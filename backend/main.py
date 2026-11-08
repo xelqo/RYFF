@@ -36,6 +36,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.mount("/files", StaticFiles(directory=DATA), name="files")
 
 SESSIONS: dict[str, dict] = {}
+threading.Thread(target=runner.start, args=("",), daemon=True).start()   # warm the Daytona sandbox at boot
 LOCKS: dict[str, threading.Lock] = {}
 
 
