@@ -206,7 +206,7 @@ def transcribe(audio: UploadFile = File(...)):
         raise HTTPException(500, "ELEVENLABS_API_KEY is not set")
     data = audio.file.read()
     r = requests.post("https://api.elevenlabs.io/v1/speech-to-text", headers={"xi-api-key": key},
-                      data={"model_id": os.environ.get("STT_MODEL", "scribe_v2")},
+                      data={"model_id": os.environ.get("STT_MODEL", "scribe_v2"), "language_code": "en", "tag_audio_events": "false"},
                       files={"file": (audio.filename or "vibe.wav", data, audio.content_type or "audio/wav")},
                       timeout=60)
     if not r.ok:

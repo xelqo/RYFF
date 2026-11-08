@@ -3,23 +3,16 @@ import { useCallback, useRef, useState } from "react";
 const TAKE_SECONDS = 4;
 export const VIBE_SECONDS = 4;
 
-function beep() {
-  const ctx = new AudioContext();
+function beep(ctx: AudioContext) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.frequency.value = 880;
   gain.gain.setValueAtTime(0.25, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
   osc.connect(gain).connect(ctx.destination);
-  void ctx.resume();
   osc.start();
   osc.stop(ctx.currentTime + 0.2);
-  return new Promise<void>((resolve) =>
-    setTimeout(() => {
-      void ctx.close();
-      resolve();
-    }, 350),
-  );
+  return new Promise<void>((resolve) => setTimeout(resolve, 350));
 }
 
 function encodeWav(samples: Float32Array, sampleRate: number) {
@@ -55,7 +48,10 @@ export function useRecorder() {
   const record = useCallback(async (seconds: number = TAKE_SECONDS) => {
     setRecording(true);
     let stream: MediaStream | null = null;
-    let ctx: AudioContext | null = null;
+    // Create + resume the AudioContext NOW, synchronously inside the click. Safari keeps a context created
+    // after an await (permission prompt, beep) suspended, and a suspended context delivers no samples.
+    const ctx: AudioContext = new AudioContext();
+    const resumed = ctx.resume();
     try {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -65,10 +61,15 @@ export function useRecorder() {
       } catch (e) {
         throw new Error(`Microphone blocked (${(e as Error).name}). Allow the mic for this site and try again.`);
       }
-      await beep();
-
-      ctx = new AudioContext();
-      await ctx.resume();
+      await resumed.catch(() => undefined);
+      await beep(ctx);
+      if (ctx.state !== "running") {
+        throw new Error(`The browser kept audio paused (${ctx.state}). Tap the button again; if it keeps happening, use Chrome.`);
+      }
+      const track = stream.getAudioTracks()[0];
+      if (!track || track.readyState !== "live") throw new Error("The mic track isn't live. Another app or tab may be using the mic.");
+      if (track.muted) console.warn("[recorder] mic track is muted by the system/browser", track.label);
+      console.info("[recorder]", { context: ctx.state, sampleRate: ctx.sampleRate, mic: track.label, settings: track.getSettings() });
       const source = ctx.createMediaStreamSource(stream);
       const processor = ctx.createScriptProcessor(4096, 1, 1);
       const silent = ctx.createGain();
@@ -93,7 +94,10 @@ export function useRecorder() {
       processor.disconnect();
 
       const length = chunks.reduce((n, c) => n + c.length, 0);
-      if (!length) throw new Error("No audio was captured. Check that the mic is allowed and not used by another app.");
+      if (!length) {
+        throw new Error(`No audio was captured (context ${ctx.state}, mic "${track.label}", muted ${track.muted}). ` +
+          "Close other apps/tabs using the mic (Zoom, the producer agent) or try Chrome.");
+      }
       const samples = new Float32Array(length);
       let offset = 0;
       for (const c of chunks) {
@@ -106,7 +110,7 @@ export function useRecorder() {
       return encodeWav(samples, ctx.sampleRate);
     } finally {
       stream?.getTracks().forEach((t) => t.stop());
-      void ctx?.close();
+      void ctx.close();
       stopRef.current = null;
       setSecondsLeft(0);
       setRecording(false);
