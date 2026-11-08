@@ -183,7 +183,11 @@ def add_part(sid: str, audio: UploadFile = File(...), kind: str = Form(...), nam
     try:
         result, files = get_runner().run(data, args)
     except AnalysisError as e:
+        log.warning("analysis failed: %s", e)
         raise HTTPException(503, str(e))
+    except Exception as e:  # never a bare 500: the error terminal should show what happened
+        log.exception("analysis crashed")
+        raise HTTPException(503, f"Analysis crashed: {type(e).__name__}: {e}")
     if not result.get("ok"):
         raise HTTPException(500, f"Analysis failed: {result.get('error')}")
     for fname, blob in files.items():

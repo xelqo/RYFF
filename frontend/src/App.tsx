@@ -78,7 +78,7 @@ function Studio() {
   const [recording, setRecording] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
   const [exported, setExported] = useState<{ url: string; seconds: number } | null>(null);
-  const [health, setHealth] = useState<Health | null>(null);
+  const [health, setHealth] = useState<Health | null | undefined>(undefined); // undefined = not checked yet
   const [error, setError] = useState<string | null>(null);
   const [vibeInput, setVibeInput] = useState("");
   const [transport, setTransport] = useState<"started" | "paused" | "stopped">("stopped");
@@ -166,7 +166,10 @@ function Studio() {
   }
 
   async function recordPart(kindRaw: string, name?: string): Promise<string> {
-    if (busy.current) return "Already recording. Wait for this take to finish.";
+    if (busy.current) {
+      debug.warn("record", `Ignored record_part(${kindRaw}): the previous take is still being processed`);
+      return "Still working on the previous take. Wait for its result before recording again.";
+    }
     busy.current = true;
     const { kind, slot } = normalizeKind(kindRaw);
     try {
@@ -383,6 +386,7 @@ function Studio() {
 
   const lastSandbox = useRef<string | null>(null);
   useEffect(() => {
+    if (health === undefined) return; // first check hasn't finished yet
     const now = health ? `${health.mode}/${health.sandbox}` : "offline";
     if (now === lastSandbox.current) return;
     lastSandbox.current = now;
@@ -474,7 +478,9 @@ function Studio() {
 
   // ------------------------------------------------------------ UI
   const v = session?.vibe;
-  const sandboxLabel = !health
+  const sandboxLabel = health === undefined
+    ? "connecting…"
+    : !health
     ? "backend offline"
     : health.mode === "daytona"
       ? `daytona: ${health.sandbox}`

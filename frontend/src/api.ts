@@ -1,14 +1,21 @@
 import { debug } from "./debug";
 import type { Health, Part, Session } from "./types";
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+async function req<T>(path: string, init?: RequestInit, timeoutMs = 0): Promise<T> {
   let res: Response;
+  const ctrl = timeoutMs ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   try {
-    res = await fetch(path, init);
+    res = await fetch(path, ctrl ? { ...init, signal: ctrl.signal } : init);
   } catch (e) {
-    const msg = `Can't reach the backend (${path}). Is uvicorn running on port 8000?`;
+    const timedOut = (e as { name?: string })?.name === "AbortError";
+    const msg = timedOut
+      ? `The backend took longer than ${Math.round(timeoutMs / 1000)} s (${path}). Check the backend terminal.`
+      : `Can't reach the backend (${path}). Is uvicorn running on port 8000?`;
     debug.error("api", msg);
     throw new Error(msg);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
   const text = await res.text();
   let data: unknown = null;
@@ -51,7 +58,8 @@ export function addPart(
   if (o.slot) fd.append("slot", o.slot);
   fd.append("pre_roll", String(o.preRoll));
   fd.append("steps", String(o.steps));
-  return req<{ session: Session; part: Part }>(`/api/sessions/${id}/parts`, { method: "POST", body: fd });
+  // stay under the agent's 60 s tool timeout (the take itself already used ~10 s)
+  return req<{ session: Session; part: Part }>(`/api/sessions/${id}/parts`, { method: "POST", body: fd }, 40000);
 }
 
 export const updatePart = (id: string, pid: string, patch: { slot?: string; muted?: boolean; volume?: number }) =>
