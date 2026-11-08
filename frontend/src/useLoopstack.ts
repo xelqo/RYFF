@@ -52,7 +52,7 @@ export function useLoopstack(onReady: (version: Version, session: Session) => vo
   }, []);
 
   const setVibe = useCallback(
-    async (vibeText: string) => {
+    async (vibeText: string, key?: string) => {
       setError(null);
       const current = sessionRef.current;
       if (current) {
@@ -61,7 +61,7 @@ export function useLoopstack(onReady: (version: Version, session: Session) => vo
         watch(`Switching to ${vibeText}`);
         return;
       }
-      const created = await api.createSession(vibeText);
+      const created = await api.createSession(vibeText, key);
       sessionRef.current = created;
       setSession(created);
       if (created.versions.length > 0 && created.status !== "building") {

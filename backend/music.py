@@ -68,6 +68,8 @@ def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_word
         layers += ["sparse, minimal arrangement", "chords and atmosphere only"]
 
     tempo = [f"{vibe['bpm']} BPM"] if vibe.get("bpm") else []
+    if vibe.get("key"):
+        tempo.append(f"in the key of {vibe['key']}")
     positive = lead_layers + styles + tempo + layers + ["instrumental", "great production quality"] + words
     negative = list(dict.fromkeys(list(vibe.get("negative_styles", [])) + ["vocals", "singing", "spoken word"] + missing))
 

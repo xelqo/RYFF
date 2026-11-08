@@ -22,6 +22,8 @@ export default function App() {
   const [heardVibe, setHeardVibe] = useState<string | null>(null);
   const [listeningVibe, setListeningVibe] = useState(false);
   const [showType, setShowType] = useState(false);
+  const [startKey, setStartKey] = useState<string | null>(null);
+  const [listeningKey, setListeningKey] = useState(false);
   const player = usePlayer();
   const recorder = useRecorder();
   const [step, setStep] = useState(0);
@@ -48,11 +50,27 @@ export default function App() {
     if (!vibe) return "no vibe given";
     if (building) return "still producing the last version, wait for the update";
     try {
-      await loop.setVibe(vibe);
+      await loop.setVibe(vibe, startKey ?? undefined);
       return `generating a version for ${vibe}`;
     } catch (e) {
       setError(String(e));
       return `could not start ${vibe}, ask them to try again`;
+    }
+  };
+
+  const humKey = async () => {
+    if (recorder.recording || building) return;
+    setError(null);
+    setListeningKey(true);
+    try {
+      const take = await recorder.record(5);
+      const result = await api.detectKey(take);
+      if (result.key) setStartKey(result.key);
+      else setError(result.error ?? "Couldn't hear a tune. Hum a few longer notes.");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setListeningKey(false);
     }
   };
 
@@ -189,11 +207,21 @@ export default function App() {
 
       <section className="card">
         <h2>{session ? `Vibe: ${session.vibe.text}` : "What vibe are we making? Say it out loud."}</h2>
+        {!session && (
+          <div className="actions">
+            <button className={listeningKey ? "record on" : "ghost"} onClick={humKey} disabled={Boolean(building) || recorder.recording}>
+              {listeningKey
+                ? recorder.secondsLeft ? `Hum now… ${recorder.secondsLeft}` : "Get ready…"
+                : startKey ? `Key: ${startKey} (hum again)` : "1. Hum a few notes to set the key (optional)"}
+            </button>
+          </div>
+        )}
+        {session?.vibe.key && <p className="muted">Key: {session.vibe.key} (from your hum)</p>}
         <div className="actions">
           <button className={listeningVibe ? "record on" : "record"} onClick={speakVibe} disabled={Boolean(building) || recorder.recording}>
             {listeningVibe
               ? recorder.secondsLeft ? `Listening… ${recorder.secondsLeft}` : "Get ready…"
-              : session ? "Say a new vibe" : "Tap and say your vibe"}
+              : session ? "Say a new vibe" : startKey ? "2. Now say your vibe" : "Tap and say your vibe"}
           </button>
           <button className="ghost" onClick={() => setShowType((v) => !v)}>{showType ? "Hide" : "Type it instead"}</button>
         </div>
@@ -240,7 +268,7 @@ export default function App() {
 
       {session && (
         <section className="card">
-          <h2>{recorder.recording && !listeningVibe ? (recorder.secondsLeft ? `Recording… ${recorder.secondsLeft}` : "Get ready…") : (PROMPTS.find((p) => p.kind === kind) ?? prompt).ask}</h2>
+          <h2>{recorder.recording && !listeningVibe && !listeningKey ? (recorder.secondsLeft ? `Recording… ${recorder.secondsLeft}` : "Get ready…") : (PROMPTS.find((p) => p.kind === kind) ?? prompt).ask}</h2>
           <div className="presets">
             {PROMPTS.map((p) => (
               <button key={p.kind} className={kind === p.kind ? "chip on" : "chip"} onClick={() => setKind(p.kind)} disabled={recorder.recording}>
@@ -249,7 +277,7 @@ export default function App() {
             ))}
           </div>
           <div className="actions">
-            {recorder.recording && !listeningVibe ? (
+            {recorder.recording && !listeningVibe && !listeningKey ? (
               <button className="record on" onClick={recorder.stop}>Stop</button>
             ) : (
               <button className="record" onClick={() => addSound(kind)} disabled={Boolean(building) || recorder.recording}>

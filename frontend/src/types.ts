@@ -31,6 +31,7 @@ export interface Vibe {
   text: string;
   styles: string[];
   bpm: number | null;
+  key?: string;
 }
 
 export interface Session {
@@ -46,11 +47,12 @@ export interface Session {
 export type AddPartResult = { part: Part; status: "building" } | { error: string };
 
 export interface Api {
-  createSession(vibeText: string): Promise<Session>;
+  createSession(vibeText: string, key?: string): Promise<Session>;
   changeVibe(sessionId: string, vibeText: string): Promise<{ status: "building" }>;
   addPart(sessionId: string, audio: Blob, kind: PartKind, fromVersion?: number): Promise<AddPartResult>;
   getSession(sessionId: string): Promise<Session>;
   agentToken(): Promise<string | null>;
   transcribe(audio: Blob): Promise<string>;
+  detectKey(audio: Blob): Promise<{ key?: string; error?: string }>;
   fileUrl(path: string): string;
 }

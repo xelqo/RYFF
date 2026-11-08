@@ -14,6 +14,7 @@ from pathlib import Path
 import runners
 
 log = logging.getLogger("loopstack")
+MIX_SCRIPT = Path(__file__).resolve().parent.parent / "sandbox" / "mix.py"
 KIND_ARG = {"drums": "hit", "bass": "bass", "melody": "melody", "texture": "texture"}
 
 
@@ -76,6 +77,32 @@ def to_traits(kind: str, r: dict) -> dict:
     return {"busyness": 0.5, "punch": 0.5, "brightness": 0.5, "length_s": take_s}
 
 
+NOTE_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]   # Krumhansl-Kessler profiles
+_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+
+
+def key_from_notes(notes: list[dict]) -> dict | None:
+    """Estimate the key of a hum from its (unsnapped) notes, weighting each pitch class by duration."""
+    if len(notes) < 2:
+        return None
+    hist = [0.0] * 12
+    for n in notes:
+        hist[n["midi"] % 12] += n["dur_steps"]
+    mean_h = sum(hist) / 12
+
+    def corr(profile, tonic):
+        prof = profile[-tonic:] + profile[:-tonic]
+        mp = sum(prof) / 12
+        num = sum((h - mean_h) * (q - mp) for h, q in zip(hist, prof))
+        den = (sum((h - mean_h) ** 2 for h in hist) * sum((q - mp) ** 2 for q in prof)) ** 0.5
+        return num / den if den else 0.0
+
+    score, tonic, scale = max((corr(prof, k), k, s) for k in range(12) for s, prof in (("major", _MAJOR), ("minor", _MINOR)))
+    return {"key": f"{NOTE_NAMES[tonic]} {scale}", "tonic": 48 + tonic, "scale": scale,
+            "confidence": round(score, 2), "notes": len(notes)}
+
+
 class AnalysisRunner:
     """Implements the runner interface in contrib.py on top of runners.py."""
 
@@ -124,11 +151,79 @@ class AnalysisRunner:
                 traits["_hit_path"] = str(out)
         return traits
 
-    def mix(self, local_mp3: str, hits: list[str]) -> str:
-        # TODO(Derik): sandbox/mix.py: layer the hit samples on detected beats, -14 LUFS, fades, in the sandbox.
+    def detect_key(self, local_audio: str) -> dict:
+        self.start("")
+        wav = to_wav(Path(local_audio))
+        try:
+            result, _ = runners.get_runner().run(wav.read_bytes(), ["--kind", "melody", "--scale", "chromatic", "--steps", "64"])
+        except runners.AnalysisError as e:
+            return {"error": str(e)}
+        key = key_from_notes(result.get("notes") or []) if result.get("ok") else None
+        if not key:
+            return {"error": result.get("message") or "Couldn't hear a tune. Hum a few longer notes and try again."}
+        key["runner"] = result.get("runner")
+        return key
+
+    def mix(self, local_mp3: str, hits: list, bpm: int | None = None) -> str:
+        """Layer the user's real hits onto the song's beat (sandbox/mix.py, run in Daytona), then -14 LUFS.
+        hits: [(hit_wav_path, slot)]. Any failure falls back to the unmixed song so a version is never lost."""
         out = local_mp3.replace(".raw.mp3", ".mp3")
-        shutil.copyfile(local_mp3, out)
+        ff = _ffmpeg()
+        if not hits or not ff:
+            shutil.copyfile(local_mp3, out)
+            return out
+        song_wav = local_mp3.replace(".raw.mp3", ".song.wav")
+        mixed_wav = local_mp3.replace(".raw.mp3", ".mixed.wav")
+        try:
+            subprocess.run([ff, "-v", "error", "-y", "-i", local_mp3, "-ac", "2", "-ar", "44100", "-sample_fmt", "s16",
+                            song_wav], check=True, timeout=60)
+            names = [f"hit{i}.wav" for i in range(len(hits))]
+            args = ["--bpm", str(bpm or 0)] + [a for n, (_, slot) in zip(names, hits) for a in ("--hit", f"{n}:{slot or 'snare'}")]
+            result = self._run_mix(song_wav, [h for h, _ in hits], names, args, mixed_wav)
+            if not result.get("ok"):
+                raise RuntimeError(result.get("error"))
+            log.info("mixed %d hits at %s BPM via %s", result.get("placed", 0), result.get("bpm"), result.get("runner"))
+            subprocess.run([ff, "-v", "error", "-y", "-i", mixed_wav, "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
+                            "-ar", "44100", "-b:a", "192k", out], check=True, timeout=120)
+        except Exception as e:
+            log.warning("mix failed (%s); using the unmixed song", e)
+            shutil.copyfile(local_mp3, out)
+        finally:
+            for f in (song_wav, mixed_wav):
+                Path(f).unlink(missing_ok=True)
         return out
+
+    def _run_mix(self, song_wav: str, hit_paths: list[str], names: list[str], args: list[str], out_wav: str) -> dict:
+        import json, shlex, sys, tempfile, uuid
+        runner = runners.get_runner()
+        if runner is runners.DAYTONA:
+            d = runners.DAYTONA
+            job = f"{runners.REMOTE}/mix/{uuid.uuid4().hex[:8]}"
+            with d._lock:
+                d._exec(f"mkdir -p {job}")
+                d.sandbox.fs.upload_file(MIX_SCRIPT.read_bytes(), f"{job}/mix.py")
+                d.sandbox.fs.upload_file(Path(song_wav).read_bytes(), f"{job}/song.wav")
+                for path, name in zip(hit_paths, names):
+                    d.sandbox.fs.upload_file(Path(path).read_bytes(), f"{job}/{name}")
+                cmd = f"cd {job} && python3 mix.py song.wav out.wav " + " ".join(shlex.quote(a) for a in args)
+                r = d._exec(cmd)
+                result = runners._parse(getattr(r, "result", "") or "")
+                if result.get("ok"):
+                    Path(out_wav).write_bytes(d.sandbox.fs.download_file(f"{job}/out.wav"))
+                d._exec(f"rm -rf {job}")
+            result["runner"] = "daytona"
+            return result
+        with tempfile.TemporaryDirectory() as tmp:            # local fallback (dev only)
+            shutil.copyfile(song_wav, f"{tmp}/song.wav")
+            for path, name in zip(hit_paths, names):
+                shutil.copyfile(path, f"{tmp}/{name}")
+            p = subprocess.run([sys.executable, "-I", str(MIX_SCRIPT), "song.wav", "out.wav", *args],
+                               cwd=tmp, capture_output=True, text=True, timeout=120)
+            result = runners._parse(p.stdout or p.stderr)
+            if result.get("ok"):
+                shutil.copyfile(f"{tmp}/out.wav", out_wav)
+        result["runner"] = "local"
+        return result
 
     def stop(self, session_id: str) -> None:
         pass

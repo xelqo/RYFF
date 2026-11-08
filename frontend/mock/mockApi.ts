@@ -92,6 +92,10 @@ export const mockApi: Api = {
     return clone(session);
   },
 
+  async detectKey() {
+    return { key: "A minor" };
+  },
+
   async transcribe() {
     return "chill lo-fi";
   },

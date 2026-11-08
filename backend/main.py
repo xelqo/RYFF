@@ -99,7 +99,7 @@ def build_version(sid: str, reason: str, new_words: list[str] | None, from_versi
 
             # Preset vibes (exact preset text, first version) are served from / saved to backend/cache/
             name = s["vibe"]["name"]
-            is_preset = n == 1 and s["vibe"]["text"].lower().strip() in PRESET_TEXT.get(name, [])
+            is_preset = n == 1 and not s["vibe"].get("key") and s["vibe"]["text"].lower().strip() in PRESET_TEXT.get(name, [])
             use_cache = is_preset and os.environ.get("USE_CACHE", "1") == "1"
             cached_mp3, cached_id = CACHE / f"{name}.bare.mp3", CACHE / f"{name}.bare.song_id"   # "bare" = no drums/bass v1
             if use_cache and cached_mp3.exists() and cached_mp3.stat().st_size > 20000:
@@ -113,8 +113,12 @@ def build_version(sid: str, reason: str, new_words: list[str] | None, from_versi
                     cached_mp3.write_bytes(audio)
                     cached_id.write_text(song_id or "")
 
-            hits = [p["_hit_path"] for p in s["parts"] if p["kind"] == "drums" and p.get("_hit_path")]
-            mixed = Path(runner.mix(str(raw), hits)) if hits else raw
+            hits = [(p["_hit_path"], p["traits"].get("slot") or "snare")
+                    for p in s["parts"] if p["kind"] == "drums" and p.get("_hit_path")]
+            try:
+                mixed = Path(runner.mix(str(raw), hits, bpm=s["vibe"].get("bpm"))) if hits else raw
+            except TypeError:                     # stub runner without bpm
+                mixed = Path(runner.mix(str(raw), hits)) if hits else raw
             s["versions"].append({
                 "n": n, "song_id": song_id, "url": url_for(mixed), "plan": plan, "reason": reason,
                 "from_version": from_version, "conditioned": bool(prev), "created_at": time.time(),
@@ -133,6 +137,7 @@ PRESET_TEXT = {"lofi": ["chill lo-fi", "lo-fi", "lofi"], "trap": ["dark trap", "
 # ------------------------------------------------------------------ endpoints
 class VibeIn(BaseModel):
     vibe_text: str
+    key: str | None = None          # e.g. "D minor", from POST /key (the user's starter hum)
 
 
 @app.get("/health")
@@ -146,7 +151,10 @@ def health():
 def create_session(body: VibeIn, bg: BackgroundTasks):
     sid = uuid.uuid4().hex[:8]
     (DATA / sid).mkdir()
-    s = {"id": sid, "vibe": make_vibe(body.vibe_text), "parts": [], "versions": [],
+    vibe = make_vibe(body.vibe_text)
+    if body.key:
+        vibe["key"] = body.key
+    s = {"id": sid, "vibe": vibe, "parts": [], "versions": [],
          "seed": random.randint(1, 2**31 - 1), "status": "building", "error": None}
     SESSIONS[sid], LOCKS[sid] = s, threading.Lock()
     threading.Thread(target=runner.start, args=(sid,), daemon=True).start()   # warm the sandbox
@@ -157,7 +165,10 @@ def create_session(body: VibeIn, bg: BackgroundTasks):
 @app.patch("/sessions/{sid}/vibe")
 def change_vibe(sid: str, body: VibeIn, bg: BackgroundTasks):
     s = get_session(sid)
+    key = s["vibe"].get("key")
     s["vibe"], s["status"] = make_vibe(body.vibe_text), "building"
+    if body.key or key:
+        s["vibe"]["key"] = body.key or key       # the starter hum's key survives a vibe change
     # keep every part's raw take but re-word it for the new vibe's instruments; no conditioning on the old beat
     for p in s["parts"]:
         p["words"] = traits_to_words(p["kind"], p["traits"], s["vibe"])
@@ -202,6 +213,18 @@ def read_session(sid: str):
     out = public(s)
     out["parts"] = [public(p) for p in s["parts"]]
     return out
+
+
+@app.post("/key")
+def detect_key(audio: UploadFile = File(...)):
+    """Starter hum → key (e.g. "D minor"), analysed in the Daytona sandbox."""
+    folder = DATA / "_keys"
+    folder.mkdir(exist_ok=True)
+    path = folder / f"{uuid.uuid4().hex[:8]}{Path(audio.filename or 'hum.wav').suffix or '.wav'}"
+    path.write_bytes(audio.file.read())
+    if not hasattr(runner, "detect_key"):
+        return {"error": "key detection needs the Daytona runner"}
+    return runner.detect_key(str(path))
 
 
 @app.post("/transcribe")

@@ -17,12 +17,12 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 export const realApi: Api = {
-  async createSession(vibeText) {
+  async createSession(vibeText, key) {
     return json(
       await fetch(`${BASE}/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vibe_text: vibeText }),
+        body: JSON.stringify({ vibe_text: vibeText, key: key ?? null }),
       }),
     );
   },
@@ -61,6 +61,12 @@ export const realApi: Api = {
     } catch {
       return null;
     }
+  },
+
+  async detectKey(audio) {
+    const form = new FormData();
+    form.append("audio", audio, fileName(audio, "hum"));
+    return json(await fetch(`${BASE}/key`, { method: "POST", body: form }));
   },
 
   async transcribe(audio) {
