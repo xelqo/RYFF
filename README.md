@@ -1,51 +1,45 @@
 # Loopstack (working name)
 
-**Pick a vibe, then build a song out of your own sounds.** Type "chill lo-fi" and you get a beat at the right tempo.
-Clap and your clap becomes the snare. Hum and your tune becomes the melody. Add parts whenever you want, in any
-order. Nothing is required up front except the vibe.
+**Pick a vibe, then grow a song with your own sounds.** Type "chill lo-fi" and a beat plays. The app asks for more:
+clap something and the song gets drums that feel like your clap; hum and it gets a melody shaped like your hum.
+Every sound you add makes a new, fuller version of the song.
 
-Built for <hackathon name> with **ElevenLabs** (instrument sounds + backing track) and **Daytona** (sandboxed audio
-analysis).
+Built for <hackathon name> with **ElevenLabs Music** (generates every version of the song) and **Daytona**
+(sandboxed audio analysis + mixing).
 
 ## The 10-second pitch
-Everyone has a beat or a tune in their head and no way to get it out. Pick a vibe, make some noise, and Loopstack
-turns it into a real track that's still recognisably *yours*: your clap, your melody, in the style you asked for.
+You don't need to play an instrument or know music words. Make a noise, and Loopstack turns how it *feels* (fast,
+punchy, soaring, low and smooth) into a part of your song.
 
 ## How a session goes
-1. **Choose a vibe** (text or preset): "chill lo-fi", "dark trap", "summer house".
-   The vibe sets the **tempo, key, drum pattern style and instruments** for the whole song. It's fixed for the session.
-2. **A beat starts** right away from the vibe alone.
-3. **Add a sound, any time.** Pause or keep playing, record, and it joins the song on the next loop:
-   - **clap / tap / beatbox / any hit** → we use the *sound itself* as a drum in the vibe's pattern
-     (rhythm stays loose; the vibe decides the groove)
-   - **hum / whistle / "da da da"** → becomes the melody (or bassline), snapped to the vibe's tempo and key and played
-     on the vibe's instrument
-   - **any other sound** (keys jingling, rain, "shhh") → a texture loop in the background
-4. Mute, redo or delete any part. Export the song.
+1. **Choose a vibe** (text or preset): "chill lo-fi", "dark trap", "summer house". It's fixed for the session.
+2. **Version 1 plays:** a beat in that vibe.
+3. **The app asks for a sound**, e.g. "Want drums? Clap or tap something." (Every step can be skipped.)
+4. **Press record → the music pauses.** Recording only ever happens with no music playing.
+5. We analyse your sound for rough traits, describe it in words, and **regenerate the whole song** with the new
+   part, building on the previous version.
+6. **The new version plays.** Next prompt: "Hum a melody", "Hum something low for bass", "Any other sound?"
+7. Step back to any earlier version, and download the one you like.
+
+Your sound is **loosely** related to the result: it steers the part (busy vs sparse, punchy vs soft, high vs low,
+rising vs falling). The result isn't a copy of what you did.
 
 ## How it works
 ```
- vibe text ─► vibe profile: bpm, key, drum style, instruments   (fixed for the session)
-                   │
-                   ├─► ElevenLabs Sound Effects → the vibe's drum kit + instrument notes
-                   └─► (optional) ElevenLabs Music → backing track at that bpm + key
-
- mic take ─► backend ─► Daytona sandbox: what is this sound?
-                          hit     → cut out the cleanest hit as a sample
-                          hum     → pitch → notes, snapped to the vibe's grid + key
-                          texture → trimmed, crossfaded loop
-                   │
-                   ▼
- browser plays everything on one loop (Tone.js transport at the vibe's bpm)
+ vibe text ──────────────────────────────► ElevenLabs Music (v2) ──► song v1
+                                                                        │
+ [paused] mic take ─► Daytona sandbox ─► traits                         │ conditioning_ref
+                      (busy, punchy,      │                             ▼
+                       pitch, contour)    └─► words ─► composition plan ─► ElevenLabs Music ─► song v2, v3 …
 ```
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · API notes: [docs/APIS.md](docs/APIS.md) ·
-Build plan: [docs/PLAN.md](docs/PLAN.md) · Team split: [docs/TEAM.md](docs/TEAM.md) · Demo: [docs/DEMO.md](docs/DEMO.md)
+Plan: [docs/PLAN.md](docs/PLAN.md) · Team: [docs/TEAM.md](docs/TEAM.md) · Demo: [docs/DEMO.md](docs/DEMO.md)
 
 ## Repo layout (planned)
 ```
-frontend/   React + Vite + Tone.js: vibe picker, recorder, loop transport, part cards
-backend/    FastAPI: session state, vibe profiles, ElevenLabs calls, Daytona orchestration
-sandbox/    code that runs INSIDE the Daytona sandbox (analyse.py) + its requirements
+frontend/   React + Vite: vibe picker, guided "add a sound" flow, recorder, player + visualiser, version history
+backend/    FastAPI: sessions, traits → words, composition plans, ElevenLabs Music, Daytona orchestration
+sandbox/    code that runs INSIDE the Daytona sandbox (analyse.py, mix.py) + requirements
 spikes/     throwaway tests (see PLAN step 0)
 docs/
 ```
@@ -53,13 +47,8 @@ docs/
 ## Setup
 ```bash
 cp .env.example .env          # fill in ELEVENLABS_API_KEY and DAYTONA_API_KEY
-# backend
 cd backend && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
-# frontend
 cd frontend && npm install && npm run dev
 ```
 The mic only works on `localhost` or HTTPS, so use a tunnel (ngrok / cloudflared) for phones.
-
-## Team
-See [docs/TEAM.md](docs/TEAM.md).

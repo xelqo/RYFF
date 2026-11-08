@@ -2,38 +2,44 @@
 
 Rule: **always have something demoable.** Each milestone ends with a working app, even if ugly.
 
-## Step 0: risk tests (first ~2–3 hours, before any UI)
-Two questions decide whether this sounds good:
-1. **Hum → melody:** record a 4-bar hum over an 80 BPM click. basic-pitch (and librosa `pyin`) → notes → snap to the
-   grid and the key → play it on ONE ElevenLabs-generated "rhodes note C4, sustained, dry" pitch-shifted per note.
-   Does it still sound like the tune you hummed?
-2. **Clap → drum:** record a few claps → cut the cleanest hit → drop it in as the snare of a lo-fi pattern with an
-   ElevenLabs kick + hat. Does it sit in the beat or sound like a random noise?
+## Step 0: ElevenLabs Music tests (first ~2 hours, before any UI)
+Plain Python scripts in `spikes/`. These decide whether the core idea works:
+1. **Speed:** generate a 30 s lo-fi beat with `music_v2`. How long does it take? (That's the wait after every sound.)
+2. **song_id:** find the header it comes back in, and check whether `store_for_inpainting` is needed to reference it.
+3. **Continuity:** generate v2 with `conditioning_ref` → v1 + `"soaring rhodes melody enters"`. Is it still
+   recognisably the same beat with a melody added? Try `condition_strength` high vs xhigh, with and without the same seed.
+4. **Do the words matter?** Same song with "busy punchy drums" vs "sparse soft drums": can you hear the difference?
+   If not, the traits do nothing, so make the words more extreme.
 
-**Go / no-go:** if hums are messy, snap harder to the scale, merge short notes, or default hums to bass (fewer,
-longer notes). If raw claps sound bad, layer the user's clap *over* the generated snare instead of replacing it.
+**Fallbacks:** if conditioning loses the beat, rely on the same seed + the same chunks with styles appended. If it's too
+slow, use 15–20 s versions and pre-generate v1 for the preset vibes.
 
-## Milestone 1: vibe → beat (no mic yet)
-- [ ] 3–4 vibe presets (lo-fi, trap, house, pop) as hand-written profiles: bpm, key, patterns, instrument prompts
-- [ ] Kits generated with ElevenLabs SFX and cached
-- [ ] Frontend: vibe picker → the beat plays on a loop with play/pause. **Already a demo.**
+## Milestone 1: vibe → song
+- [ ] 4 preset vibes (lo-fi, trap, house, pop) → styles + bpm + instrument names
+- [ ] Backend: `POST /sessions` generates v1. Frontend: vibe picker → player (looping) + visualiser
+- [ ] **Already a demo.**
 
-## Milestone 2: add sounds
-- [ ] Recorder (records while the beat plays, with an optional click), part cards with mute/delete/redo
-- [ ] `sandbox/analyse.py`: hit / hum / texture / auto → JSON (run it locally first)
-- [ ] Daytona snapshot with deps; backend runs analyse in a per-session sandbox
-- [ ] Hits drop into a kit slot; hums play as melody/bass on the vibe's instrument
+## Milestone 2: add a sound
+- [ ] Guided prompts (drums → bass → melody → anything else, all skippable)
+- [ ] Record → music auto-pauses → upload → v2 plays. Traits can be faked/random at first
+- [ ] Version history (go back, branch from an older version)
 
-## Milestone 3: free-text vibes + polish
-- [ ] Free-text vibe → nearest preset genre + adjusted instrument prompts (keyword match or a small LLM call)
-- [ ] Visuals: each part has a colour and pulses on its hits/notes, so the audience SEES the song stack up
-- [ ] Optional backing track (ElevenLabs Music, stretched to the grid)
-- [ ] Export mixdown
+## Milestone 3: real traits via Daytona
+- [ ] `sandbox/analyse.py` (librosa: busyness, punch, brightness, pitch register, contour, smoothness)
+- [ ] Daytona snapshot + one sandbox per session; `mix.py` loudness + fades
+- [ ] Traits → words table tuned by ear; UI shows "we heard: busy · punchy · bright"
 
-## Cut list if time runs out (in this order)
-export → backing track → free-text vibes (keep presets) → auto-detect (make the user pick drum/melody)
+## Milestone 4: polish
+- [ ] Free-text vibes (keyword map to the genre table; small LLM call optional)
+- [ ] Download, nicer visuals, loading animation during generation
+- [ ] Optional: say your vibe (ElevenLabs speech-to-text)
+
+## Cut list (in this order)
+speech-to-text → free-text vibes (keep presets) → branching history (keep linear undo) → real traits (fall back to
+fixed words per kind; but then Daytona only does mixing, so keep traits if at all possible)
 
 ## Out of scope (decided)
 - Changing the vibe mid-session
-- Following the user's exact clap rhythm (the vibe owns the groove)
-- Tempo detection (the vibe sets the tempo)
+- Exact use of the user's rhythm or melody (it's loose inspiration)
+- Recording while music plays
+- Our own audio engine / layering / tempo sync

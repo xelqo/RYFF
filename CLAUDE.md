@@ -1,14 +1,16 @@
 # Loopstack: notes for Claude Code
 
-Hackathon project: pick a vibe, get a beat, then add your own sounds (claps → drums, hums → melody/bass, anything
-else → texture) at any time. Must use **ElevenLabs** and **Daytona** in essential ways. Read README.md, then
-docs/ARCHITECTURE.md, docs/APIS.md and docs/TEAM.md before writing code.
+Hackathon project: pick a vibe and get a song; the app then asks for sounds (clap → drums, hum → melody/bass,
+anything → texture). Each sound, recorded while the music is PAUSED, is analysed for rough traits, turned into
+words, and the whole song is regenerated with ElevenLabs Music, building on the previous version. Must use
+**ElevenLabs** and **Daytona** in essential ways. Read README.md, docs/ARCHITECTURE.md, docs/APIS.md and docs/TEAM.md
+first.
 
 - Original code only: don't copy from other repos (e.g. our earlier "pulse" project). Ideas are fine.
-- The vibe is set once per session (tempo, key, groove, instruments). No vibe changing, no tempo detection, and the
-  user's clap rhythm is NOT followed; we use the clap's sound only.
-- Frontend: React + Vite + TypeScript + Tone.js. Backend: Python FastAPI. Sandbox code lives in `sandbox/`.
-- The browser owns timing/playback. The server returns Session/Vibe/Part JSON + sample URLs.
+- The vibe is set once per session. User sounds are LOOSE inspiration (traits → words), never exact notes or rhythm.
+- No custom audio engine/layering/tempo sync. Every version is one ElevenLabs Music track.
+- Recording only while playback is paused.
+- Frontend: React + Vite + TypeScript. Backend: Python FastAPI. Sandbox code (librosa/ffmpeg) lives in `sandbox/`.
 - API keys stay in `.env` on the backend, never in the frontend.
-- Reuse ONE Daytona sandbox per session. Cache ElevenLabs results by prompt.
+- Reuse ONE Daytona sandbox per session.
 - Follow docs/PLAN.md milestones; keep the app demoable after each one.

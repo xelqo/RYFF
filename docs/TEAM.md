@@ -3,32 +3,32 @@
 Each person owns one folder, so everyone can build in parallel and merge conflicts stay rare.
 
 ## Roles
-**1. Frontend / audio engine** (`frontend/`)
-Vibe picker, beat playback (Tone.js transport, samplers, swing), recorder, part cards (mute/delete/redo/slot),
-visuals. Starts against **fake session/part JSON** (`frontend/mock/`), so it doesn't wait on the backend.
+**1. Frontend** (`frontend/`)
+Vibe picker, guided "add a sound" prompts, recorder (auto-pauses playback), looping player + audio visualiser,
+version history, loading/"producing…" state. Starts against **mock session JSON + a few sample mp3s**
+(`frontend/mock/`), so it doesn't wait on the backend. Owns how it looks and feels on stage.
 
 **2. Analysis + Daytona** (`sandbox/`)
-Leads **step 0**. Writes `analyse.py` (hit cutting + slot guess, hum → notes snapped to key/grid, texture loops,
-auto-classify), developed locally first. Then the Daytona snapshot and the run-in-sandbox code. Give this to the
-strongest Python/audio person, because it's the riskiest part.
+`analyse.py` (traits from takes, librosa) and `mix.py` (loudness, fades), developed locally first. Then the Daytona
+snapshot, a per-session sandbox, and upload/run/download from the backend.
 
 **3. Backend + ElevenLabs** (`backend/`)
-FastAPI endpoints, session state, vibe profiles (the genre table + free-text mapping), ElevenLabs SFX calls with
-caching, optional Music backing track, export, file serving. **Runs integration and merges PRs.**
+Leads **step 0** (the Music API tests). FastAPI endpoints, session + version state, the composition-plan builder
+(vibe + parts → chunks + conditioning_ref), ElevenLabs calls, file serving. **Runs integration and merges PRs.**
 
-**4. Sound design + demo** (`backend/vibes/` presets + `docs/`)
-Early: writes and tests the ElevenLabs prompts and drum patterns for each preset vibe until every kit sounds good.
-This is what makes the demo sound professional. Records test hums/claps for the team and tests the app as it comes
-together. Late: demo script, slides, Devpost, backup video, rehearsal. Also the floater when someone is stuck.
+**4. Sound/prompt design + demo** (`backend/vibes.py`, `backend/words.py`, `docs/`)
+Writes the vibe presets and the traits → words table, then tunes them **by ear** until each preset sounds great and
+each added part is clearly audible. That decides how good the demo sounds. Records test claps/hums, tests the app
+end to end. Late: demo script, slides, Devpost, backup video, rehearsal. Floater when someone is stuck.
 
 ## Timeline (assuming ~24 h; scale to the event)
 | When | What |
 |---|---|
-| Hour 0–1, together | Agree the Session / Vibe / Part JSON in ARCHITECTURE.md, write the mock files, create the folder skeleton |
-| Hour 1–3 | 2: hum + clap tests · 4: kit prompts + patterns for 2 vibes · 1: beat playback from mock JSON · 3: API skeleton + ElevenLabs client |
-| ~Hour 3, check-in | Go / no-go on hum and clap quality → simplify if needed |
-| ~Hour 8 | Milestone 1 merged: pick a vibe and hear the beat |
-| ~Hour 14 | Milestone 2: add claps and hums via Daytona. 4 records the first backup video |
+| Hour 0–1, together | Agree the Session / Part / Version JSON, write the mocks, create the folder skeleton |
+| Hour 1–3 | 3: step 0 tests · 4: vibe presets + words, listening alongside 3 · 1: player + recorder on mocks · 2: analyse.py locally |
+| ~Hour 3, check-in | Go / no-go on continuity + speed → pick the fallbacks if needed |
+| ~Hour 8 | Milestone 1 + 2 merged: vibe → song → add a sound → new version (traits faked) |
+| ~Hour 14 | Milestone 3: real traits through Daytona. 4 records the first backup video |
 | Last 5–6 h | Feature freeze: polish, bug fixes, rehearse |
 
 ## Rules
