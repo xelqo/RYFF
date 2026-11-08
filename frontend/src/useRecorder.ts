@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 const TAKE_SECONDS = 4;
+export const VIBE_SECONDS = 4;
 
 function beep() {
   const ctx = new AudioContext();
@@ -50,11 +51,12 @@ export function useRecorder() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const stopRef = useRef<(() => void) | null>(null);
 
-  const record = useCallback(async () => {
+  const record = useCallback(async (seconds: number = TAKE_SECONDS) => {
     setRecording(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        // noise suppression would erase claps; auto gain keeps quiet mics usable
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
       });
       await beep();
       const recorder = new MediaRecorder(stream);
@@ -62,9 +64,9 @@ export function useRecorder() {
       recorder.ondataavailable = (e) => chunks.push(e.data);
       const done = new Promise<void>((resolve) => (recorder.onstop = () => resolve()));
       recorder.start();
-      setSecondsLeft(TAKE_SECONDS);
+      setSecondsLeft(seconds);
       const ticker = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
-      const timer = setTimeout(() => recorder.state === "recording" && recorder.stop(), TAKE_SECONDS * 1000);
+      const timer = setTimeout(() => recorder.state === "recording" && recorder.stop(), seconds * 1000);
       stopRef.current = () => recorder.state === "recording" && recorder.stop();
       await done;
       clearInterval(ticker);

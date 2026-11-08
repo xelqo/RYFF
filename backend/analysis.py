@@ -32,7 +32,8 @@ def to_wav(path: Path) -> Path:
     if not ff:
         raise RuntimeError("ffmpeg not found; send WAV from the browser or install ffmpeg")
     out = path.with_suffix(".wav")
-    subprocess.run([ff, "-v", "error", "-y", "-i", str(path), "-ac", "1", "-ar", "44100", "-sample_fmt", "s16", str(out)],
+    # -t 15: uploaded files can be whole songs; the first 15 s is plenty to read the feel
+    subprocess.run([ff, "-v", "error", "-y", "-i", str(path), "-t", "15", "-ac", "1", "-ar", "44100", "-sample_fmt", "s16", str(out)],
                    check=True, timeout=60)
     return out
 
@@ -98,9 +99,23 @@ class AnalysisRunner:
             return {"error": str(e)}
         if not result.get("ok"):
             return {"error": result.get("error", "analysis failed")}
-        if kind == "drums" and not result.get("hits") or kind in ("bass", "melody") and not result.get("notes"):
+        if kind in ("bass", "melody", "texture") and not result.get("notes"):
+            # Not a clear hum (e.g. an uploaded loop, a whistle, a noise): read its feel as a sound instead,
+            # so ANY sound can become a backing part.
+            try:
+                result, files = runners.get_runner().run(wav.read_bytes(), ["--kind", "hit", "--bpm", str(bpm)])
+            except runners.AnalysisError as e:
+                return {"error": str(e)}
+            files = {}
+            if not result.get("ok") or not result.get("hits"):
+                return {"error": "too quiet, ask again"}
+            traits = to_traits("drums", result)
+            traits.pop("slot", None)
+            traits.update({"pitch_register": "mid", "contour": "flat", "smoothness": round(1 - traits["busyness"], 2)})
+        elif kind == "drums" and not result.get("hits"):
             return {"error": result.get("message") or "too quiet, ask again"}
-        traits = to_traits(kind, result)
+        else:
+            traits = to_traits(kind, result)
         traits["runner"] = result.get("runner")
         for name, blob in files.items():           # e.g. hit.wav → part_<id>.hit.wav next to the take
             out = Path(local_audio).with_suffix(f".{name}")

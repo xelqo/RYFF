@@ -92,6 +92,10 @@ export const mockApi: Api = {
     return clone(session);
   },
 
+  async transcribe() {
+    return "chill lo-fi";
+  },
+
   async agentToken() {
     return null;
   },

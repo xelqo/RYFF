@@ -1,10 +1,9 @@
 import type { PartKind, Traits } from "./types";
 
-export const PROMPTS: { kind: PartKind; ask: string }[] = [
-  { kind: "drums", ask: "Want drums? Drop a penny, clap or tap something." },
-  { kind: "bass", ask: "Hum something low for the bass." },
-  { kind: "melody", ask: "Hum a tune for the melody." },
-  { kind: "texture", ask: "Any other sound? Keys, a crinkle, anything." },
+// Two kinds of sound: drums, and a backing track (sent as "melody"; any sound works, not only hums).
+export const PROMPTS: { kind: PartKind; label: string; ask: string }[] = [
+  { kind: "drums", label: "Drums", ask: "Drums: clap, tap, drop a penny, or upload a drum sound." },
+  { kind: "melody", label: "Backing track", ask: "Backing track: hum, whistle, play something, or upload any sound." },
 ];
 
 const level = (v: number, low: string, high: string) => (v >= 0.6 ? high : v <= 0.35 ? low : null);

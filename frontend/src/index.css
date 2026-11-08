@@ -269,3 +269,22 @@ input {
     transform: scaleY(1);
   }
 }
+
+.upload {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 12px 20px;
+  min-height: 48px;
+  box-sizing: border-box;
+}
+.upload.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}

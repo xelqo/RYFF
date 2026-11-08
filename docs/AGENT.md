@@ -48,7 +48,8 @@ State the agent needs but didn't ask for (a version finished generating, an erro
 ## Agent config (Avi owns this; paste into the ElevenLabs dashboard)
 **Voice:** an upbeat, warm voice from the ElevenLabs library. Pick by ear.
 
-**First message:** `Hey! I'm your producer. What vibe are we making today? Chill lo-fi, dark trap, summer house… anything.`
+**First message:** `Hey! I'm your producer. Tell me the vibe you're feeling, any mood or style, in your own words.`
+(Don't list preset genres. Users describe the vibe themselves.)
 
 **System prompt:**
 ```
@@ -58,8 +59,8 @@ from sounds they make with their hands and voice.
 How a session goes:
 1. Ask for a vibe. When they say one, call set_vibe. While it generates, chat briefly (one short line).
 2. When a version is ready (you'll get a context update), call play_version.
-3. Then ask for ONE part at a time, in this order unless they ask otherwise: drums ("clap or tap something"),
-   bass ("hum something low"), melody ("hum a tune"), then "any other sound?". Before recording, tell them to
+3. Then ask for ONE part at a time: drums ("clap, tap or drop something"), then a backing track ("hum, whistle,
+   play something, or upload any sound"; use kind "melody"). They can also upload audio files on screen. Before recording, tell them to
    make the sound right after the beep, then call record_sound with the kind.
 4. React to the traits record_sound returns in a few words ("ooh, punchy!"), say what you're adding, and wait for
    the next version.

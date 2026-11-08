@@ -51,5 +51,6 @@ export interface Api {
   addPart(sessionId: string, audio: Blob, kind: PartKind, fromVersion?: number): Promise<AddPartResult>;
   getSession(sessionId: string): Promise<Session>;
   agentToken(): Promise<string | null>;
+  transcribe(audio: Blob): Promise<string>;
   fileUrl(path: string): string;
 }

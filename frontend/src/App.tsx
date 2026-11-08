@@ -3,13 +3,12 @@ import { useConversation, useConversationClientTool } from "@elevenlabs/react";
 import { api } from "./api";
 import { useLoopstack } from "./useLoopstack";
 import { usePlayer } from "./usePlayer";
-import { useRecorder } from "./useRecorder";
+import { useRecorder, VIBE_SECONDS } from "./useRecorder";
 import { Visualiser } from "./Visualiser";
 import { Producing } from "./Producing";
 import { PROMPTS, describe } from "./describe";
 import type { PartKind, Session, Version } from "./types";
 
-const PRESETS = ["chill lo-fi", "dark trap", "summer house", "upbeat pop"];
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID as string | undefined;
 
 function readyMessage(version: Version, session: Session) {
@@ -20,6 +19,9 @@ function readyMessage(version: Version, session: Session) {
 
 export default function App() {
   const [vibeInput, setVibeInput] = useState("");
+  const [heardVibe, setHeardVibe] = useState<string | null>(null);
+  const [listeningVibe, setListeningVibe] = useState(false);
+  const [showType, setShowType] = useState(false);
   const player = usePlayer();
   const recorder = useRecorder();
   const [step, setStep] = useState(0);
@@ -54,9 +56,32 @@ export default function App() {
     }
   };
 
+  const speakVibe = async () => {
+    if (recorder.recording || building) return;
+    setError(null);
+    setHeardVibe(null);
+    setListeningVibe(true);
+    try {
+      player.pause();
+      const take = await recorder.record(VIBE_SECONDS);
+      const text = (await api.transcribe(take)).trim();
+      if (!text) {
+        setError("Didn't catch that. Tap the mic and say your vibe again.");
+        return;
+      }
+      setHeardVibe(text);
+      await chooseVibe(text);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setListeningVibe(false);
+    }
+  };
+
   useConversationClientTool("set_vibe", async (params) => chooseVibe(String(params.vibe_text ?? "")));
 
   const prompt = PROMPTS[Math.min(step, PROMPTS.length - 1)];
+  const label = (PROMPTS.find((p) => p.kind === kind)?.label ?? kind).toLowerCase();
 
   const advance = (done: PartKind) => {
     const next = PROMPTS.findIndex((p) => p.kind === done) + 1;
@@ -65,16 +90,16 @@ export default function App() {
     setKind(PROMPTS[index].kind);
   };
 
-  const addSound = async (partKind: PartKind) => {
+  const addSound = async (partKind: PartKind, file?: File) => {
     const current = loop.sessionRef.current;
     if (!current) return "no song yet, ask for a vibe first";
     if (building) return "still producing the last version, wait for the update";
-    if (recorder.recording) return "already recording";
+    if (recorder.recording || listeningVibe) return "already recording";
     setError(null);
     setHeard(null);
     try {
       player.pause();
-      const take = await recorder.record();
+      const take: Blob = file ?? (await recorder.record());
       const latest = current.versions.length;
       const from = player.current !== null && player.current !== latest ? player.current : undefined;
       const result = await api.addPart(current.id, take, partKind, from);
@@ -163,25 +188,29 @@ export default function App() {
       </header>
 
       <section className="card">
-        <h2>{session ? `Vibe: ${session.vibe.text}` : "What vibe are we making?"}</h2>
-        <div className="presets">
-          {PRESETS.map((p) => (
-            <button key={p} className={session?.vibe.text === p ? "chip on" : "chip"} onClick={() => chooseVibe(p)} disabled={Boolean(building)}>
-              {p}
-            </button>
-          ))}
+        <h2>{session ? `Vibe: ${session.vibe.text}` : "What vibe are we making? Say it out loud."}</h2>
+        <div className="actions">
+          <button className={listeningVibe ? "record on" : "record"} onClick={speakVibe} disabled={Boolean(building) || recorder.recording}>
+            {listeningVibe
+              ? recorder.secondsLeft ? `Listening… ${recorder.secondsLeft}` : "Get ready…"
+              : session ? "Say a new vibe" : "Tap and say your vibe"}
+          </button>
+          <button className="ghost" onClick={() => setShowType((v) => !v)}>{showType ? "Hide" : "Type it instead"}</button>
         </div>
-        <form
-          className="vibe-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            chooseVibe(vibeInput);
-            setVibeInput("");
-          }}
-        >
-          <input value={vibeInput} onChange={(e) => setVibeInput(e.target.value)} placeholder="or type any vibe" />
-          <button type="submit" disabled={Boolean(building)}>Set vibe</button>
-        </form>
+        {heardVibe && <p className="muted">Heard: "{heardVibe}"</p>}
+        {showType && (
+          <form
+            className="vibe-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              chooseVibe(vibeInput);
+              setVibeInput("");
+            }}
+          >
+            <input value={vibeInput} onChange={(e) => setVibeInput(e.target.value)} placeholder="describe any vibe" />
+            <button type="submit" disabled={Boolean(building)}>Set vibe</button>
+          </form>
+        )}
       </section>
 
       {building && <Producing building={building} />}
@@ -211,21 +240,37 @@ export default function App() {
 
       {session && (
         <section className="card">
-          <h2>{recorder.recording ? (recorder.secondsLeft ? `Recording… ${recorder.secondsLeft}` : "Get ready…") : prompt.ask}</h2>
+          <h2>{recorder.recording && !listeningVibe ? (recorder.secondsLeft ? `Recording… ${recorder.secondsLeft}` : "Get ready…") : (PROMPTS.find((p) => p.kind === kind) ?? prompt).ask}</h2>
           <div className="presets">
             {PROMPTS.map((p) => (
               <button key={p.kind} className={kind === p.kind ? "chip on" : "chip"} onClick={() => setKind(p.kind)} disabled={recorder.recording}>
-                {p.kind}
+                {p.label}
               </button>
             ))}
           </div>
           <div className="actions">
-            {recorder.recording ? (
+            {recorder.recording && !listeningVibe ? (
               <button className="record on" onClick={recorder.stop}>Stop</button>
             ) : (
-              <button className="record" onClick={() => addSound(kind)} disabled={Boolean(building)}>Record {kind}</button>
+              <button className="record" onClick={() => addSound(kind)} disabled={Boolean(building) || recorder.recording}>
+                Record {label}
+              </button>
             )}
-            <button className="ghost" onClick={() => skipPart(kind)} disabled={recorder.recording}>Skip {kind}</button>
+            <label className={`ghost upload${building || recorder.recording ? " disabled" : ""}`}>
+              Upload a sound
+              <input
+                type="file"
+                accept="audio/*,video/*"
+                hidden
+                disabled={Boolean(building) || recorder.recording}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) void addSound(kind, file);
+                }}
+              />
+            </label>
+            <button className="ghost" onClick={() => skipPart(kind)} disabled={recorder.recording}>Skip</button>
           </div>
           {heard && !building && !recorder.recording && <p className="muted">Last take: {heard.join(" · ")}</p>}
         </section>

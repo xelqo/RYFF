@@ -81,14 +81,14 @@ def build_version(sid: str, reason: str, new_words: list[str] | None, from_versi
             is_preset = n == 1 and s["vibe"]["text"].lower().strip() in PRESET_TEXT.get(name, [])
             use_cache = is_preset and os.environ.get("USE_CACHE", "1") == "1"
             cached_mp3, cached_id = CACHE / f"{name}.mp3", CACHE / f"{name}.song_id"
-            if use_cache and cached_mp3.exists():
+            if use_cache and cached_mp3.exists() and cached_mp3.stat().st_size > 20000:
                 raw.write_bytes(cached_mp3.read_bytes())
                 song_id = cached_id.read_text().strip() or None if cached_id.exists() else None
                 log.info("v1 from cache (%s)", name)
             else:
                 audio, song_id, _ = music.generate(plan, s["seed"])
                 raw.write_bytes(audio)
-                if use_cache:
+                if use_cache and len(audio) > 20000:      # never cache an error/empty response
                     cached_mp3.write_bytes(audio)
                     cached_id.write_text(song_id or "")
 
@@ -181,6 +181,26 @@ def read_session(sid: str):
     out = public(s)
     out["parts"] = [public(p) for p in s["parts"]]
     return out
+
+
+@app.post("/transcribe")
+def transcribe(audio: UploadFile = File(...)):
+    """Spoken vibe → text with ElevenLabs Speech-to-Text (Scribe)."""
+    key = os.environ.get("ELEVENLABS_API_KEY")
+    if not key:
+        raise HTTPException(500, "ELEVENLABS_API_KEY is not set")
+    data = audio.file.read()
+    r = requests.post("https://api.elevenlabs.io/v1/speech-to-text", headers={"xi-api-key": key},
+                      data={"model_id": os.environ.get("STT_MODEL", "scribe_v2")},
+                      files={"file": (audio.filename or "vibe.wav", data, audio.content_type or "audio/wav")},
+                      timeout=60)
+    if not r.ok:
+        raise HTTPException(502, f"speech-to-text {r.status_code}: {r.text[:300]}")
+    text = (r.json().get("text") or "").strip().strip(".!?")
+    # drop Scribe's sound tags like "(music)" / "[laughs]"
+    import re
+    text = re.sub(r"[\(\[][^)\]]*[\)\]]", "", text).strip()
+    return {"text": text}
 
 
 @app.get("/agent-token")

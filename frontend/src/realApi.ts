@@ -54,6 +54,13 @@ export const realApi: Api = {
     }
   },
 
+  async transcribe(audio) {
+    const form = new FormData();
+    form.append("audio", audio, "vibe.wav");
+    const body = await json<{ text: string }>(await fetch(`${BASE}/transcribe`, { method: "POST", body: form }));
+    return body.text;
+  },
+
   fileUrl(path) {
     if (path.startsWith("http") || path.startsWith("blob:")) return path;
     return `${BASE}${path.startsWith("/") ? "" : "/"}${path}`;
