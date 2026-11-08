@@ -6,6 +6,8 @@ import { engine } from "./engine";
 import { mic } from "./recorder";
 import { encodeWav } from "./wav";
 import Visualizer from "./Visualizer";
+import DebugPanel from "./DebugPanel";
+import { debug, fmt } from "./debug";
 import { SLOTS, type Health, type Part, type Session, type Slot } from "./types";
 
 const AGENT_ID = (import.meta.env.VITE_ELEVENLABS_AGENT_ID as string | undefined)?.trim();
@@ -50,6 +52,16 @@ function describe(s: Session): string {
   return `Song: ${v.label}, ${v.bpm} BPM, ${v.key}. Parts: ${parts.length ? parts.join(", ") : "none yet"}.`;
 }
 
+/** Registers an agent client tool and logs every call in the error terminal. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function useTool(name: string, handler: (p: any) => string | Promise<string>) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useConversationClientTool(name, (p: any) => {
+    debug.info("tool", `producer called ${name}(${fmt(p ?? {})})`);
+    return handler(p);
+  });
+}
+
 export default function App() {
   return (
     <ConversationProvider>
@@ -71,6 +83,9 @@ function Studio() {
   const [vibeInput, setVibeInput] = useState("");
   const [transport, setTransport] = useState<"started" | "paused" | "stopped">("stopped");
   const [quietWhileTalking, setQuietWhileTalking] = useState(true);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [errorCount, setErrorCount] = useState(0);
+  const [micPermission, setMicPermission] = useState("unknown");
   const busy = useRef(false);
 
   const log = useCallback((who: Line["who"], text: string) => {
@@ -78,9 +93,18 @@ function Studio() {
   }, []);
 
   const conversation = useConversation({
-    onConnect: () => log("app", "Producer connected. Say hi!"),
-    onDisconnect: () => log("app", "Producer disconnected."),
-    onError: (e: unknown) => setError(`Agent: ${errMsg(e)}`),
+    onConnect: () => {
+      log("app", "Producer connected. Say hi!");
+      debug.info("agent", "Connected");
+    },
+    onDisconnect: () => {
+      log("app", "Producer disconnected.");
+      debug.info("agent", "Disconnected");
+    },
+    onError: (e: unknown) => {
+      setError(`Agent: ${errMsg(e)}`);
+      debug.error("agent", fmt(e));
+    },
     onMessage: (m: unknown) => {
       const msg = m as { message?: string; source?: string; role?: string };
       if (msg?.message) log(msg.source === "user" || msg.role === "user" ? "you" : "producer", msg.message);
@@ -174,6 +198,7 @@ function Studio() {
       setCountIn(null);
       setAgentMic(false);
       setStatus("Analysing your take in the Daytona sandbox…");
+      debug.info("record", `Uploading ${kind} take (${(take.samples.length / take.sampleRate).toFixed(1)} s) for analysis`);
       const wav = encodeWav([take.samples], take.sampleRate);
       const res = await api.addPart(s.id, wav, { kind, name, slot, preRoll, steps });
       busy.current = false;
@@ -187,6 +212,7 @@ function Studio() {
             : `It's playing as a ${p.kind} line with ${p.notes?.length ?? 0} notes, snapped to ${res.session.vibe.key}`;
       return `Added "${p.name}". ${what}. ${describe(res.session)}`;
     } catch (e) {
+      debug.error("record", `${kind} take failed: ${fmt(e)}`);
       if (sessionRef.current) engine.play(sessionRef.current);
       return `That take didn't work: ${errMsg(e)}`;
     } finally {
@@ -283,30 +309,31 @@ function Studio() {
       return out;
     } catch (e) {
       const out = `Error: ${errMsg(e)}`;
+      debug.error("tool", fmt(e));
       log("app", out);
       return out;
     }
   };
 
-  useConversationClientTool("set_vibe", (p: { vibe?: string }) => safe(() => setVibe(String(p?.vibe ?? ""))));
-  useConversationClientTool("record_part", (p: { kind?: string; name?: string }) =>
+  useTool("set_vibe", (p: { vibe?: string }) => safe(() => setVibe(String(p?.vibe ?? ""))));
+  useTool("record_part", (p: { kind?: string; name?: string }) =>
     safe(() => recordPart(String(p?.kind ?? "drum"), p?.name ? String(p.name) : undefined)),
   );
-  useConversationClientTool("set_part_slot", (p: { part?: string; slot?: string }) =>
+  useTool("set_part_slot", (p: { part?: string; slot?: string }) =>
     safe(() => patchPart(String(p?.part ?? ""), { slot: String(p?.slot ?? "").toLowerCase() }, "Moved")),
   );
-  useConversationClientTool("mute_part", (p: { part?: string; muted?: boolean | string }) => {
+  useTool("mute_part", (p: { part?: string; muted?: boolean | string }) => {
     const muted = !(p?.muted === false || p?.muted === "false");
     return safe(() => patchPart(String(p?.part ?? ""), { muted }, muted ? "Muted" : "Unmuted"));
   });
-  useConversationClientTool("remove_part", (p: { part?: string }) => safe(() => removePart(String(p?.part ?? ""))));
-  useConversationClientTool("add_backing", (p: { style?: string }) => {
+  useTool("remove_part", (p: { part?: string }) => safe(() => removePart(String(p?.part ?? ""))));
+  useTool("add_backing", (p: { style?: string }) => {
     void addBacking(p?.style ? String(p.style) : undefined);
     return "Composing the backing track now. It will fade in by itself in about 20 to 40 seconds.";
   });
-  useConversationClientTool("export_song", () => safe(exportSong));
-  useConversationClientTool("pause_music", () => safe(async () => pauseMusic()));
-  useConversationClientTool("resume_music", () => safe(async () => resumeMusic()));
+  useTool("export_song", () => safe(exportSong));
+  useTool("pause_music", () => safe(async () => pauseMusic()));
+  useTool("resume_music", () => safe(async () => resumeMusic()));
 
   // Music fades out while the producer talks, so voice and beat never fight (and the mic doesn't hear the beat).
   useEffect(() => {
@@ -321,10 +348,59 @@ function Studio() {
     return () => clearInterval(id);
   }, []);
 
+  // Error terminal: count errors and pop it open when something goes wrong.
+  useEffect(() => {
+    let seen = debug.entries.length;
+    return debug.subscribe((entries) => {
+      const fresh = entries.slice(Math.min(seen, entries.length));
+      seen = entries.length;
+      const errors = fresh.filter((e) => e.level === "error").length;
+      if (errors) {
+        setErrorCount((c) => c + errors);
+        setDebugOpen(true);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    let status: PermissionStatus | null = null;
+    const update = () => status && setMicPermission(status.state);
+    navigator.permissions
+      ?.query({ name: "microphone" as PermissionName })
+      .then((s) => {
+        status = s;
+        update();
+        s.onchange = () => {
+          update();
+          debug.info("mic", `Mic permission is now "${s.state}"`);
+        };
+      })
+      .catch(() => setMicPermission("unknown"));
+    return () => {
+      if (status) status.onchange = null;
+    };
+  }, []);
+
+  const lastSandbox = useRef<string | null>(null);
+  useEffect(() => {
+    const now = health ? `${health.mode}/${health.sandbox}` : "offline";
+    if (now === lastSandbox.current) return;
+    lastSandbox.current = now;
+    if (!health) debug.error("backend", "Backend offline: start it with uvicorn main:app --reload --port 8000");
+    else if (health.sandbox === "error" || health.sandbox === "no-key")
+      debug.error("daytona", `Sandbox ${health.sandbox}: ${health.sandbox_error ?? ""}`);
+    else debug.info("daytona", `Analysis mode: ${health.mode} (sandbox ${health.sandbox})`);
+    if (health && !health.elevenlabs) debug.error("elevenlabs", "ELEVENLABS_API_KEY is missing from the root .env");
+  }, [health]);
+
   // Spacebar = play/pause (unless you're typing).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
+      if (e.key === "`" && tag !== "INPUT") {
+        setDebugOpen((o) => !o);
+        return;
+      }
       if (e.code !== "Space" || tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || busy.current) return;
       e.preventDefault();
       togglePlay();
@@ -416,6 +492,16 @@ function Studio() {
         <div className={`pill ${health?.mode === "daytona" && health.sandbox === "ready" ? "ok" : "warn"}`} title={health?.sandbox_error ?? ""}>
           {sandboxLabel}
         </div>
+        <button
+          className={`logs ${errorCount ? "has-errors" : ""}`}
+          onClick={() => {
+            setDebugOpen((o) => !o);
+            setErrorCount(0);
+          }}
+          title="Error terminal (`)"
+        >
+          logs{errorCount ? ` · ${errorCount}` : ""}
+        </button>
         <button className={`talk ${connected ? "on" : ""}`} onClick={toggleTalk}>
           {connected ? (conversation.isSpeaking ? "Producer talking… (end)" : "Listening… (end)") : "Talk to the producer"}
         </button>
@@ -534,6 +620,11 @@ function Studio() {
           </div>
         </section>
       </main>
+      <DebugPanel
+        open={debugOpen}
+        onClose={() => setDebugOpen(false)}
+        env={`mic permission: ${micPermission} · secure context: ${window.isSecureContext} · audio: ${Tone.getContext().state} ${Tone.getContext().sampleRate} Hz · backend: ${health ? `${health.mode}, sandbox ${health.sandbox}` : "offline"} · producer: ${conversation.status}`}
+      />
     </div>
   );
 }

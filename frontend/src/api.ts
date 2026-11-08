@@ -1,7 +1,15 @@
+import { debug } from "./debug";
 import type { Health, Part, Session } from "./types";
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+  let res: Response;
+  try {
+    res = await fetch(path, init);
+  } catch (e) {
+    const msg = `Can't reach the backend (${path}). Is uvicorn running on port 8000?`;
+    debug.error("api", msg);
+    throw new Error(msg);
+  }
   const text = await res.text();
   let data: unknown = null;
   try {
@@ -12,6 +20,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const detail = (data as { detail?: unknown } | null)?.detail;
     const msg = typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : text || res.statusText;
+    debug.error("api", `${init?.method ?? "GET"} ${path} → ${res.status}: ${msg}`);
     throw new Error(msg);
   }
   return data as T;
