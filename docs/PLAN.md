@@ -40,8 +40,9 @@ slow, use 15–20 s versions and pre-generate v1 for the preset vibes.
 - [ ] Download, nicer visuals, loading animation during generation
 
 ## Cut list (in this order)
-agent → text-only agent (keep buttons) only if the voice agent is NOT a hackathon requirement · free-text vibes (keep presets) → branching history (keep linear undo) → real traits (fall back to
-fixed words per kind; but then Daytona only does mixing, so keep traits if at all possible)
+free-text vibes (keep presets) → branching history (keep linear undo) → real traits (fall back to fixed words per
+kind; but then Daytona only does mixing, so keep traits if at all possible).
+**Never cut the voice agent** (it's a hackathon requirement). Worst case, fall back to a text-only agent plus the buttons.
 
 ## Out of scope (decided)
 - Changing the vibe mid-session
