@@ -5,7 +5,8 @@ import { useLoopstack } from "./useLoopstack";
 import { usePlayer } from "./usePlayer";
 import { useRecorder } from "./useRecorder";
 import { Visualiser } from "./Visualiser";
-import type { Session, Version } from "./types";
+import { PROMPTS, describe } from "./describe";
+import type { PartKind, Session, Version } from "./types";
 
 const PRESETS = ["chill lo-fi", "dark trap", "summer house", "upbeat pop"];
 const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID as string | undefined;
@@ -20,7 +21,9 @@ export default function App() {
   const [vibeInput, setVibeInput] = useState("");
   const player = usePlayer();
   const recorder = useRecorder();
-  const [lastTake, setLastTake] = useState<string | null>(null);
+  const [step, setStep] = useState(0);
+  const [kind, setKind] = useState<PartKind>("drums");
+  const [heard, setHeard] = useState<string[] | null>(null);
   const agentMuted = player.playing || recorder.recording;
   const conversation = useConversation({ micMuted: agentMuted });
   const agentOn = conversation.status === "connected";
@@ -49,12 +52,47 @@ export default function App() {
 
   useConversationClientTool("set_vibe", async (params) => chooseVibe(String(params.vibe_text ?? "")));
 
-  const recordTake = async () => {
-    player.pause();
-    const take = await recorder.record();
-    setLastTake(URL.createObjectURL(take));
-    return take;
+  const prompt = PROMPTS[Math.min(step, PROMPTS.length - 1)];
+
+  const advance = (done: PartKind) => {
+    const next = PROMPTS.findIndex((p) => p.kind === done) + 1;
+    const index = Math.max(step, Math.min(next, PROMPTS.length - 1));
+    setStep(index);
+    setKind(PROMPTS[index].kind);
   };
+
+  const addSound = async (partKind: PartKind) => {
+    const current = loop.sessionRef.current;
+    if (!current) return "no song yet, ask for a vibe first";
+    if (building) return "still producing the last version, wait for the update";
+    if (recorder.recording) return "already recording";
+    setError(null);
+    setHeard(null);
+    try {
+      player.pause();
+      const take = await recorder.record();
+      const latest = current.versions.length;
+      const from = player.current !== null && player.current !== latest ? player.current : undefined;
+      const result = await api.addPart(current.id, take, partKind, from);
+      if ("error" in result) return "too quiet, ask again";
+      const words = describe(result.part.traits);
+      setHeard(words);
+      loop.watch(`Adding ${partKind}`, words.join(" · "));
+      advance(partKind);
+      return `heard: ${words.join(", ")}`;
+    } catch (e) {
+      setError(String(e));
+      return "recording failed, ask them to try again";
+    }
+  };
+
+  const skipPart = (partKind: PartKind) => {
+    advance(partKind);
+    return `skipped ${partKind}`;
+  };
+
+  useConversationClientTool("record_sound", async (params) => addSound((params.kind as PartKind) ?? prompt.kind));
+  useConversationClientTool("skip_part", async (params) => skipPart((params.kind as PartKind) ?? prompt.kind));
 
   const startAgent = async () => {
     setError(null);
@@ -125,13 +163,23 @@ export default function App() {
 
       {session && (
         <section className="card">
-          <h2>{recorder.recording ? (recorder.secondsLeft ? `Recording… ${recorder.secondsLeft}` : "Get ready…") : "Add a sound"}</h2>
-          {recorder.recording ? (
-            <button className="record on" onClick={recorder.stop}>Stop</button>
-          ) : (
-            <button className="record" onClick={() => recordTake().catch((e) => setError(String(e)))}>Record</button>
-          )}
-          {lastTake && !recorder.recording && <audio className="take" src={lastTake} controls />}
+          <h2>{recorder.recording ? (recorder.secondsLeft ? `Recording… ${recorder.secondsLeft}` : "Get ready…") : prompt.ask}</h2>
+          <div className="presets">
+            {PROMPTS.map((p) => (
+              <button key={p.kind} className={kind === p.kind ? "chip on" : "chip"} onClick={() => setKind(p.kind)} disabled={recorder.recording}>
+                {p.kind}
+              </button>
+            ))}
+          </div>
+          <div className="actions">
+            {recorder.recording ? (
+              <button className="record on" onClick={recorder.stop}>Stop</button>
+            ) : (
+              <button className="record" onClick={() => addSound(kind)} disabled={Boolean(building)}>Record {kind}</button>
+            )}
+            <button className="ghost" onClick={() => skipPart(kind)} disabled={recorder.recording}>Skip {kind}</button>
+          </div>
+          {heard && !recorder.recording && <p className="muted">We heard: {heard.join(" · ")}</p>}
         </section>
       )}
 
