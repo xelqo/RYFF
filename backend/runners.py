@@ -75,12 +75,47 @@ class DaytonaRunner:
         finally:
             self._ready.set()
 
+    LABELS = {"app": "loopstack"}
+
+    def _reuse(self):
+        """Reuse our labelled sandbox (start it if stopped) so server restarts don't pile up new sandboxes;
+        stopped sandboxes still count against Daytona's 30 GiB disk limit."""
+        pinned = os.getenv("DAYTONA_SANDBOX_ID", "").strip()
+        if pinned:
+            try:
+                sb = self.daytona.get(pinned)
+                if "started" not in str(getattr(sb, "state", "")).lower():
+                    sb.start(timeout=120)
+                log.info("Using pinned sandbox %s", sb.id)
+                return sb
+            except Exception as e:
+                log.warning("Pinned sandbox %s unavailable (%s)", pinned, e)
+        try:
+            for sb in self.daytona.list():
+                if (getattr(sb, "labels", None) or {}).get("app") != self.LABELS["app"]:
+                    continue
+                state = str(getattr(sb, "state", "")).lower()
+                if "started" in state:
+                    log.info("Reusing running sandbox %s", sb.id)
+                    return sb
+                if "stopped" in state or "archived" in state:
+                    log.info("Starting stopped sandbox %s", sb.id)
+                    sb.start(timeout=120)
+                    return sb
+        except Exception as e:  # never block startup on the reuse path
+            log.warning("Couldn't reuse a sandbox (%s); creating a new one", e)
+        return None
+
     def _create(self):
+        existing = self._reuse()
+        if existing is not None:
+            return existing
         try:
             from daytona import CreateSandboxFromSnapshotParams
 
-            # auto-stop after 30 idle minutes so a crashed server doesn't leave it running forever
-            return self.daytona.create(CreateSandboxFromSnapshotParams(language="python", auto_stop_interval=30))
+            # auto-stop after 30 idle minutes, auto-delete a day after stopping so old ones don't fill the disk
+            return self.daytona.create(CreateSandboxFromSnapshotParams(
+                language="python", labels=self.LABELS, auto_stop_interval=30, auto_delete_interval=24 * 60))
         except (ImportError, TypeError) as e:
             log.warning("Using default sandbox params (%s)", e)
             return self.daytona.create()

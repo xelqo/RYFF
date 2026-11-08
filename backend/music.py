@@ -45,12 +45,35 @@ def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_word
     styles = ([own] if own else []) + [s for s in vibe["styles"] if s.lower() != own.lower()]
     if own and vibe.get("name") and vibe["name"] not in own.lower().replace("-", "").replace(" ", ""):
         styles = styles[:1] + styles[2:]      # drop the preset's genre label when the user asked for something else
+
+    # Layers the user hasn't added yet are kept OUT of the song, so every added sound brings in something new:
+    # v1 = chords + atmosphere only; drums bring the kick/beat; a backing track brings bass + melody.
+    kinds = {p.get("kind") for p in parts}
+    has_drums = "drums" in kinds
+    has_backing = bool(kinds & {"melody", "bass", "texture"})
+    layer_words = ("drum", "beat", "groove", "swing", "kick", "snare", "hat", "808", "four-on-the-floor", "bass")
+    if not has_drums:
+        styles = styles[:1] + [s for s in styles[1:] if not any(w in s.lower() for w in layer_words)]
+    pad = vibe.get("instruments", {}).get("texture") or "warm chord pad"
+    lead_layers, layers, missing = [], [f"soft chords on {pad}"], []
+    if has_drums:
+        lead_layers.append("steady drum beat with kick")      # first in the list: later parts must not wash it out
+    else:
+        missing += ["drums", "percussion", "kick drum", "snare", "hi-hats", "drum beat"]
+    if has_backing:
+        lead_layers.append("bassline and melody")
+    else:
+        missing += ["bass", "bassline", "808", "lead melody"]
+    if not has_drums and not has_backing:
+        layers += ["sparse, minimal arrangement", "chords and atmosphere only"]
+
     tempo = [f"{vibe['bpm']} BPM"] if vibe.get("bpm") else []
-    positive = styles + tempo + ["instrumental", "great production quality"] + words
-    negative = list(dict.fromkeys(list(vibe.get("negative_styles", [])) + ["vocals", "singing", "spoken word"]))
+    positive = lead_layers + styles + tempo + layers + ["instrumental", "great production quality"] + words
+    negative = list(dict.fromkeys(list(vibe.get("negative_styles", [])) + ["vocals", "singing", "spoken word"] + missing))
 
     first = {
-        "text": "[Intro]\n{the beat continues}" if prev_song_id else "[Intro]",
+        "text": "[Intro]\n{the beat continues}" if prev_song_id else
+                "[Intro]\n{only soft chords and atmosphere, no drums, no bass}" if not parts else "[Intro]",
         "duration_ms": intro,
         "positive_styles": positive,
         "negative_styles": negative,
@@ -58,7 +81,19 @@ def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_word
     if prev_song_id:
         first["conditioning_ref"] = {"song_id": prev_song_id, "range": {"start_ms": 0, "end_ms": intro}}
         first["condition_strength"] = os.environ.get("CONDITION_STRENGTH", "high")
-    main_text = "[Main]\n{" + (", ".join(new_words) + " enters" if new_words else "full groove") + "}"
+    # Say which earlier layers keep going and what enters now (tested: without this, earlier drums drop out)
+    new_kind = parts[-1].get("kind") if new_words and parts else None
+    earlier = {p.get("kind") for p in parts[:-1]} if new_kind else kinds
+    keep = []
+    if "drums" in earlier and new_kind != "drums":
+        keep.append("the drums and kick keep playing")
+    if earlier & {"melody", "bass", "texture"} and new_kind not in ("melody", "bass", "texture"):
+        keep.append("the bassline and melody keep playing")
+    if new_words:
+        enters = ", ".join(new_words[:2]) + (" and a bassline" if new_kind in ("melody", "bass") else "") + " enter"
+    else:
+        enters = "the groove continues" if parts else "soft chords and atmosphere only, no drums, no bass"
+    main_text = "[Main]\n{" + "; ".join(keep + [enters]) + "}"
     second = {"text": main_text, "duration_ms": main, "positive_styles": positive, "negative_styles": negative}
     if prev_song_id and mode == "short":
         second["context_adherence"] = os.environ.get("MAIN_ADHERENCE", "low")

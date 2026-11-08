@@ -36,7 +36,13 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.mount("/files", StaticFiles(directory=DATA), name="files")
 
 SESSIONS: dict[str, dict] = {}
-threading.Thread(target=runner.start, args=("",), daemon=True).start()   # warm the Daytona sandbox at boot
+
+
+@app.on_event("startup")
+def _warm_sandbox() -> None:
+    # at server start only (not on import, so tests/scripts don't boot sandboxes)
+    threading.Thread(target=runner.start, args=("",), daemon=True).start()
+
 LOCKS: dict[str, threading.Lock] = {}
 
 
@@ -95,7 +101,7 @@ def build_version(sid: str, reason: str, new_words: list[str] | None, from_versi
             name = s["vibe"]["name"]
             is_preset = n == 1 and s["vibe"]["text"].lower().strip() in PRESET_TEXT.get(name, [])
             use_cache = is_preset and os.environ.get("USE_CACHE", "1") == "1"
-            cached_mp3, cached_id = CACHE / f"{name}.mp3", CACHE / f"{name}.song_id"
+            cached_mp3, cached_id = CACHE / f"{name}.bare.mp3", CACHE / f"{name}.bare.song_id"   # "bare" = no drums/bass v1
             if use_cache and cached_mp3.exists() and cached_mp3.stat().st_size > 20000:
                 raw.write_bytes(cached_mp3.read_bytes())
                 song_id = cached_id.read_text().strip() or None if cached_id.exists() else None
