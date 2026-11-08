@@ -1,22 +1,24 @@
 # Team split (4 people)
 
+Names, owned folders and copy-paste agent briefs: **[ROLES.md](ROLES.md)**.
+
 Each person owns one folder, so everyone can build in parallel and merge conflicts stay rare.
 
 ## Roles
-**1. Frontend** (`frontend/`)
+**1. Frontend: Lucas** (`frontend/`)
 Vibe picker, guided "add a sound" prompts, recorder (auto-pauses playback), looping player + audio visualiser,
 version history, loading/"producing…" state. Starts against **mock session JSON + a few sample mp3s**
 (`frontend/mock/`), so it doesn't wait on the backend. Owns how it looks and feels on stage.
 
-**2. Analysis + Daytona** (`sandbox/`)
+**2. Analysis + Daytona: Derik** (`sandbox/`)
 `analyse.py` (traits from takes, librosa) and `mix.py` (loudness, fades), developed locally first. Then the Daytona
 snapshot, a per-session sandbox, and upload/run/download from the backend.
 
-**3. Backend + ElevenLabs** (`backend/`)
+**3. Backend + ElevenLabs: Alex** (`backend/`)
 Leads **step 0** (the Music API tests). FastAPI endpoints, session + version state, the composition-plan builder
 (vibe + parts → chunks + conditioning_ref), ElevenLabs calls, file serving. **Runs integration and merges PRs.**
 
-**4. Sound/prompt design + demo** (`backend/vibes.py`, `backend/words.py`, `docs/`)
+**4. Sound/prompt design + demo: Avi** (`backend/vibes.py`, `backend/words.py`, `docs/`)
 Writes the vibe presets and the traits → words table, then tunes them **by ear** until each preset sounds great and
 each added part is clearly audible. That decides how good the demo sounds. Records test claps/hums, tests the app
 end to end. Late: demo script, slides, Devpost, backup video, rehearsal. Floater when someone is stuck.
@@ -32,7 +34,7 @@ end to end. Late: demo script, slides, Devpost, backup video, rehearsal. Floater
 | Last 5–6 h | Feature freeze: polish, bug fixes, rehearse |
 
 ## Rules
-- `main` always runs. Use personal branches and small, frequent PRs; person 3 merges.
+- `main` always runs. Use personal branches and small, frequent PRs; Alex merges.
 - Changing the shared JSON shape needs a heads-up in the group chat first.
 - 5-minute standup every ~3 h: what works, what's blocked, what gets cut.
-- Stuck for more than 45 min? Grab person 4.
+- Stuck for more than 45 min? Grab Avi.

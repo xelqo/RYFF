@@ -6,6 +6,9 @@ words, and the whole song is regenerated with ElevenLabs Music, building on the 
 **ElevenLabs** and **Daytona** in essential ways. Read README.md, docs/ARCHITECTURE.md, docs/APIS.md and docs/TEAM.md
 first.
 
+**Find your role in docs/ROLES.md** (Lucas = frontend, Derik = analysis + Daytona, Alex = backend + ElevenLabs,
+Avi = sound design + demo). Ask the user who they are if unsure, and stay inside that person's folders.
+
 - Original code only: don't copy from other repos (e.g. our earlier "pulse" project). Ideas are fine.
 - The vibe is set once per session. User sounds are LOOSE inspiration (traits → words), never exact notes or rhythm.
 - No custom audio engine/layering/tempo sync. Every version is one ElevenLabs Music track.

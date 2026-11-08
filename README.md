@@ -44,6 +44,10 @@ spikes/     throwaway tests (see PLAN step 0)
 docs/
 ```
 
+## Team
+Lucas (frontend) · Derik (analysis + Daytona) · Alex (backend + ElevenLabs) · Avi (sound design + demo).
+Roles and agent briefs: [docs/ROLES.md](docs/ROLES.md).
+
 ## Setup
 ```bash
 cp .env.example .env          # fill in ELEVENLABS_API_KEY and DAYTONA_API_KEY
