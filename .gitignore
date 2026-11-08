@@ -4,3 +4,6 @@ node_modules/
 __pycache__/
 .DS_Store
 spikes/out/
+backend/data/
+spikes/out/
+backend/cache/

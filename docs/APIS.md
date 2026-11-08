@@ -11,8 +11,8 @@ Auth header `xi-api-key: $ELEVENLABS_API_KEY`. Python SDK: `pip install elevenla
   `conditioning_ref`, `condition_strength` (`low|medium|high|xhigh`).
 - `conditioning_ref` = `{ "song_id": "...", "range": { "start_ms": 0, "end_ms": 10000 } }`, a **previously generated**
   song. The first chunk's reference influences every later chunk.
-- ⚠︎ The `song_id` comes back in a **response header**; the docs don't name it, so print all headers on the first call.
-- ⚠︎ Set `store_for_inpainting: true` on every generation in case referencing later requires it. Verify in step 0.
+- The `song_id` comes back in the **`song-id` response header** (verified in step 0).
+- We send `store_for_inpainting: true` on every generation; referencing with it works. (Without it: untested.)
 - `output_format` query param, e.g. `mp3_44100_128`.
 - No raw audio upload: the user's sounds reach the model only as words.
 
@@ -45,6 +45,20 @@ Auth header `xi-api-key: $ELEVENLABS_API_KEY`. Python SDK: `pip install elevenla
 - `textOnly: true` runs it without the mic (fallback).
 - ⚠︎ Look up the exact server endpoint for minting a conversation token.
 - Full design + system prompt: [AGENT.md](AGENT.md).
+
+## Step 0 results (2026-11-08, Alex): GO
+Test files in `spikes/out/` (gitignored, on Alex's laptop). Numbers are rough spectral measures; **confirm by ear**.
+- **Speed:** a 20 s `music_v2` track takes **~2.5 s**. The wait after each sound is tiny.
+- **Words matter:** "driving busy punchy drums" vs "very sparse soft brushed drums" (same seed): onsets 2.45/s vs
+  0.80/s, high-frequency energy 0.16 vs 0.03. Traits → words will be audible.
+- **Conditioning drowns out new parts.** With an 8 s conditioned intro (high/medium/low strength) v2 is ~0.93–0.98
+  similar to v1, and added "busy drums" did NOT show up (onsets unchanged).
+- **No conditioning + same seed:** busy drums came through (2.35 vs 1.15 onsets/s), similarity to v1 ~0.77–0.83.
+- **Chosen default (`CONDITION_MODE=short`):** a 3 s conditioned intro + main chunk with `context_adherence: low`.
+  The intro matches v1 (0.98) and the new part lands strongly (2.87 onsets/s), but the main section is quite
+  different from v1 (0.32): it plays like "old beat, then the new part drops in". With `medium` adherence the part
+  barely shows (1.43/s).
+- To compare by ear: `c_v1.mp3` → `c_v2_short_low.mp3` (default) vs `b_v2_drums_nocond.mp3` (`CONDITION_MODE=none`).
 
 ## ElevenLabs extras (optional)
 - **Sound Effects** `POST /v1/sound-generation` (`text`, `duration_seconds` 0.5–30, `loop`, `prompt_influence`):
