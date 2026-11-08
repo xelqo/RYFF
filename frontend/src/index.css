@@ -212,3 +212,60 @@ input {
 .download {
   margin-left: auto;
 }
+
+.producing {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-color: var(--accent);
+  background: linear-gradient(120deg, #24142a, var(--panel));
+}
+
+.producing-label {
+  font-size: clamp(1.3rem, 4vw, 1.9rem);
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.eq {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.eq span {
+  width: 8px;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(var(--accent-2), var(--accent));
+  animation: eq 0.9s ease-in-out infinite alternate;
+  transform-origin: bottom;
+}
+
+.heard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.trait {
+  font-weight: 700;
+  font-size: 1.1rem;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 92, 138, 0.15);
+  color: var(--accent);
+}
+
+@keyframes eq {
+  from {
+    transform: scaleY(0.15);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}

@@ -5,6 +5,7 @@ import { useLoopstack } from "./useLoopstack";
 import { usePlayer } from "./usePlayer";
 import { useRecorder } from "./useRecorder";
 import { Visualiser } from "./Visualiser";
+import { Producing } from "./Producing";
 import { PROMPTS, describe } from "./describe";
 import type { PartKind, Session, Version } from "./types";
 
@@ -180,7 +181,7 @@ export default function App() {
         </form>
       </section>
 
-      {building && <section className="card">{building.label}…</section>}
+      {building && <Producing building={building} />}
 
       {session && session.versions.length > 0 && (
         <section className="card player">
@@ -223,7 +224,7 @@ export default function App() {
             )}
             <button className="ghost" onClick={() => skipPart(kind)} disabled={recorder.recording}>Skip {kind}</button>
           </div>
-          {heard && !recorder.recording && <p className="muted">We heard: {heard.join(" · ")}</p>}
+          {heard && !building && !recorder.recording && <p className="muted">Last take: {heard.join(" · ")}</p>}
         </section>
       )}
 
