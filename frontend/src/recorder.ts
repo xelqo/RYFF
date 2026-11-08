@@ -41,6 +41,18 @@ function peakOf(x: Float32Array) {
 class Mic {
   private stream: MediaStream | null = null;
   private ctx: AudioContext | null = null;
+  private meter: AnalyserNode | null = null;
+  private meterSource: MediaStreamAudioSourceNode | null = null;
+  private meterData = new Float32Array(256);
+
+  /** Local-only input level, read by the visualizer; never records or uploads. */
+  getLevel(): number {
+    if (!this.meter || this.ctx?.state !== "running" || !this.stream?.active) return 0;
+    this.meter.getFloatTimeDomainData(this.meterData);
+    let energy = 0;
+    for (const value of this.meterData) energy += value * value;
+    return Math.min(1, Math.sqrt(energy / this.meterData.length) * 10);
+  }
 
   async init() {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -71,6 +83,14 @@ class Mic {
         window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       this.ctx = new Ctor({ latencyHint: "interactive" });
       debug.info("mic", `Capture audio context: ${this.ctx.sampleRate} Hz`);
+    }
+    if (!this.meter || !live || this.meter.context !== this.ctx) {
+      this.meterSource?.disconnect();
+      this.meter?.disconnect();
+      this.meter = this.ctx.createAnalyser();
+      this.meter.fftSize = 256;
+      this.meterSource = this.ctx.createMediaStreamSource(this.stream!);
+      this.meterSource.connect(this.meter); // No connection to speakers: no mic feedback.
     }
     if (this.ctx.state !== "running") {
       await this.ctx.resume().catch((e) => debug.warn("mic", `Couldn't resume capture audio: ${e}`));

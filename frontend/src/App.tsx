@@ -7,7 +7,7 @@ import { mic } from "./recorder";
 import { encodeWav } from "./wav";
 import Visualizer from "./Visualizer";
 import DebugPanel from "./DebugPanel";
-import RecordOverlay, { type RecState } from "./RecordOverlay";
+import { type RecState } from "./RecordOverlay";
 import { debug, fmt } from "./debug";
 import { SLOTS, type Health, type Part, type Session, type Slot } from "./types";
 
@@ -72,6 +72,7 @@ export default function App() {
 }
 
 function Studio() {
+  const [connecting, setConnecting] = useState(false);
   const [session, setSessionState] = useState<Session | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const [status, setStatus] = useState("");
@@ -354,6 +355,7 @@ function Studio() {
       return out;
     } catch (e) {
       const out = `Error: ${errMsg(e)}`;
+      setError(out);
       debug.error("tool", fmt(e));
       log("app", out);
       return out;
@@ -403,7 +405,7 @@ function Studio() {
       const errors = fresh.filter((e) => e.level === "error").length;
       if (errors) {
         setErrorCount((c) => c + errors);
-        setDebugOpen(true);
+        // Errors stay in the keyboard-accessible debug panel.
       }
     });
   }, []);
@@ -499,6 +501,7 @@ function Studio() {
   }, []);
 
   async function toggleTalk() {
+    if (connecting) return;
     setError(null);
     if (connected) {
       await conversation.endSession();
@@ -509,178 +512,42 @@ function Studio() {
       return;
     }
     try {
+      setConnecting(true);
       await Tone.start();
       await mic.init();
       await conversation.startSession({ agentId: AGENT_ID });
     } catch (e) {
       setError(`Couldn't start the producer: ${errMsg(e)}`);
+    } finally {
+      setConnecting(false);
     }
   }
 
-  const manual = (fn: () => Promise<string>) => () => void safe(fn);
-
-  // ------------------------------------------------------------ UI
-  const v = session?.vibe;
-  const sandboxLabel = health === undefined
-    ? "connecting…"
-    : !health
-    ? "backend offline"
-    : health.mode === "daytona"
-      ? `daytona: ${health.sandbox}`
-      : health.mode === "local"
-        ? "local analysis (dev only)"
-        : `daytona: ${health.sandbox}`;
+  const countIn = rec.phase === "countin" ? rec.n : rec.phase === "recording" ? 0 : null;
+  const orbState = countIn !== null && countIn > 0 ? `Count in · ${countIn}`
+    : rec.phase === "waiting" ? "Get ready" : rec.phase === "recording" ? "Recording" : status ? "Processing" : connecting ? "Connecting"
+    : connected ? conversation.isSpeaking ? "Speaking" : "Listening" : "Click to talk";
 
   return (
-    <div className={`app ${rec.phase === "recording" ? "rec-active" : ""}`}>
-      <header>
-        <div className="brand">
-          LOOPSTACK<span>.</span>
-        </div>
-        <div className="vibe-info">{v ? `${v.label} · ${v.bpm} BPM · ${v.key}` : "no vibe yet"}</div>
-        <div className={`pill ${health?.mode === "daytona" && health.sandbox === "ready" ? "ok" : "warn"}`} title={health?.sandbox_error ?? ""}>
-          {sandboxLabel}
-        </div>
-        <button
-          className={`logs ${errorCount ? "has-errors" : ""}`}
-          onClick={() => {
-            setDebugOpen((o) => !o);
-            setErrorCount(0);
-          }}
-          title="Error terminal (`)"
-        >
-          logs{errorCount ? ` · ${errorCount}` : ""}
-        </button>
-        <button className={`talk ${connected ? "on" : ""}`} onClick={toggleTalk}>
-          {connected ? (conversation.isSpeaking ? "Producer talking… (end)" : "Listening… (end)") : "Talk to the producer"}
-        </button>
-      </header>
-
-      {error && (
-        <div className="error" onClick={() => setError(null)}>
-          {error}
-        </div>
-      )}
-
+    <div className={`app ${session ? "has-session" : ""}`}>
       <main>
-        <section className="stage">
-          <div className="stage-viz">
-            <Visualizer getAgent={getAgent} analyser={engine.analyser} countIn={null} recording={recording} />
-            <RecordOverlay rec={rec} />
-          </div>
-          <div className="status">{status || (connected ? "Say a vibe, clap, hum, or ask for changes." : " ")}</div>
-          {session && (
-            <button className="transport" onClick={togglePlay} disabled={recording} title="Spacebar">
-              {transport === "started" ? "❚❚  Pause" : "▶  Play"}
+        <section className="stage" aria-label="Loopstack voice studio">
+          <Visualizer getAgent={getAgent} getMic={() => mic.getLevel()} analyser={engine.analyser} countIn={countIn} recording={recording} listening={connected} expanded={!!session} />
+          <div className="orb-anchor">
+            <button className={`voice-orb ${connected ? "connected" : ""} ${recording ? "recording" : ""} ${status || connecting ? "processing" : ""}`}
+              onClick={toggleTalk} disabled={connecting || recording}
+              aria-label={connected ? "Disconnect producer" : "Connect producer"}
+              aria-pressed={connected} title={connected ? "Click to end conversation" : "Click to talk to Loopstack"}>
+              <span className="orb-core" /><span className="orb-glint" />
             </button>
-          )}
-          <div className="beat">
-            {v &&
-              SLOTS.map((slot) => {
-                const user = [...(session?.parts ?? [])].reverse().find((p) => p.kind === "drum" && p.slot === slot);
-                return (
-                  <div key={slot} id={`pulse-${user ? user.id : `kit-${slot}`}`} className={`slot ${user ? "yours" : ""} ${user?.muted ? "muted" : ""}`}>
-                    <b>{slot}</b>
-                    <span>{user ? `your ${user.name}` : v.pattern[slot].length ? "kit" : "—"}</span>
-                  </div>
-                );
-              })}
-          </div>
-        </section>
-
-        <section className="side">
-          <div className="card">
-            <h3>Vibe</h3>
-            <div className="chips">
-              {PRESETS.map((p) => (
-                <button key={p} onClick={manual(() => setVibe(p))}>
-                  {p}
-                </button>
-              ))}
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (vibeInput.trim()) void safe(() => setVibe(vibeInput));
-              }}
-            >
-              <input value={vibeInput} onChange={(e) => setVibeInput(e.target.value)} placeholder="or type one: rainy night lo-fi" />
-            </form>
-          </div>
-
-          <div className="card">
-            <h3>Parts</h3>
-            {!session?.parts.length && <p className="muted">Clap, hum or make any sound to add a part.</p>}
-            {session?.parts.map((p) => (
-              <div key={p.id} id={`pulse-${p.id}`} className={`part ${p.kind} ${p.muted ? "muted" : ""}`}>
-                <div>
-                  <b>{p.name}</b>
-                  <span>
-                    {p.kind}
-                    {p.kind === "drum" ? ` → ${p.slot}` : ""}
-                    {p.notes ? ` · ${p.notes.length} notes` : ""}
-                  </span>
-                </div>
-                <div className="part-actions">
-                  {p.kind === "drum" && (
-                    <select value={p.slot} onChange={(e) => void safe(() => patchPart(p.name, { slot: e.target.value }, "Moved"))}>
-                      {SLOTS.map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
-                  )}
-                  <button onClick={manual(() => patchPart(p.name, { muted: !p.muted }, p.muted ? "Unmuted" : "Muted"))}>
-                    {p.muted ? "unmute" : "mute"}
-                  </button>
-                  <button onClick={manual(() => removePart(p.name))}>✕</button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="card">
-            <h3>Manual controls</h3>
-            <div className="chips">
-              <button onClick={manual(() => recordPart("drum"))}>● clap / hit</button>
-              <button onClick={manual(() => recordPart("melody"))}>● hum melody</button>
-              <button onClick={manual(() => recordPart("bass"))}>● hum bass</button>
-              <button onClick={manual(() => recordPart("texture"))}>● texture</button>
-              <button onClick={() => void addBacking()}>+ backing track</button>
-              <button onClick={togglePlay}>{transport === "started" ? "pause" : "play"}</button>
-              <button className="primary" onClick={manual(exportSong)}>
-                export
-              </button>
-            </div>
-            <label className="toggle">
-              <input type="checkbox" checked={quietWhileTalking} onChange={(e) => setQuietWhileTalking(e.target.checked)} />
-              Fade the music out while the producer talks
-            </label>
-            <label className="toggle">
-              <input type="checkbox" checked={beatWhileHumming} onChange={(e) => setBeatWhileHumming(e.target.checked)} />
-              Play the full beat while humming (headphones only; otherwise just clicks)
-            </label>
-            {exported && (
-              <a className="download" href={exported.url} download={`loopstack-${v?.genre ?? "track"}.wav`}>
-                ⬇ Download your {Math.round(exported.seconds)}-second track
-              </a>
-            )}
-          </div>
-
-          <div className="card transcript">
-            <h3>Session</h3>
-            {lines.map((l, i) => (
-              <p key={i} className={l.who}>
-                <b>{l.who}</b> {l.text}
-              </p>
-            ))}
+            <div className="orb-status" role="status">{orbState}</div>
+            {error && <button className="orb-error" onClick={() => setError(null)}>{error}</button>}
+            {exported && <a className="orb-download" href={exported.url} download={`loopstack-${session?.vibe.genre ?? "track"}.wav`}>Download track ↓</a>}
           </div>
         </section>
       </main>
-      <DebugPanel
-        open={debugOpen}
-        onClose={() => setDebugOpen(false)}
-        env={`mic permission: ${micPermission} · secure context: ${window.isSecureContext} · audio: ${Tone.getContext().state} ${Tone.getContext().sampleRate} Hz · backend: ${health ? `${health.mode}, sandbox ${health.sandbox}` : "offline"} · producer: ${conversation.status}`}
-      />
+      <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)}
+        env={`mic permission: ${micPermission} · secure context: ${window.isSecureContext} · audio: ${Tone.getContext().state} ${Tone.getContext().sampleRate} Hz · backend: ${health ? `${health.mode}, sandbox ${health.sandbox}` : "offline"} · producer: ${conversation.status}`} />
     </div>
   );
 }
