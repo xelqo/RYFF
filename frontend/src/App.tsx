@@ -91,6 +91,20 @@ export default function App() {
     return `skipped ${partKind}`;
   };
 
+  const playVersion = async (n?: number) => {
+    const versions = loop.sessionRef.current?.versions ?? [];
+    const version = n ? versions.find((v) => v.n === n) : versions[versions.length - 1];
+    if (!version) return versions.length ? `no v${n}, there are ${versions.length} versions` : "no versions yet";
+    try {
+      await player.play(api.fileUrl(version.url), version.n);
+      return `playing v${version.n}`;
+    } catch (e) {
+      setError(String(e));
+      return `could not play v${version.n}`;
+    }
+  };
+
+  useConversationClientTool("play_version", async (params) => playVersion(params.n ? Number(params.n) : undefined));
   useConversationClientTool("record_sound", async (params) => addSound((params.kind as PartKind) ?? prompt.kind));
   useConversationClientTool("skip_part", async (params) => skipPart((params.kind as PartKind) ?? prompt.kind));
 
@@ -158,6 +172,13 @@ export default function App() {
             </div>
           </div>
           <Visualiser analyser={player.analyser} active={player.playing} />
+          <div className="versions">
+            {session.versions.map((v) => (
+              <button key={v.n} className={player.current === v.n ? "chip on" : "chip"} onClick={() => playVersion(v.n)}>
+                v{v.n}
+              </button>
+            ))}
+          </div>
         </section>
       )}
 
