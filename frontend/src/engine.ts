@@ -224,6 +224,21 @@ class Engine {
     Tone.getTransport().stop();
   }
 
+  private beeper: Tone.Synth | null = null;
+
+  /** Short "go" beep (played before a drum take starts recording). */
+  beep(time: number) {
+    if (!this.beeper) {
+      this.beeper = new Tone.Synth({
+        oscillator: { type: "sine" },
+        envelope: { attack: 0.002, decay: 0.08, sustain: 0, release: 0.02 },
+      }).connect(this.master);
+      this.beeper.volume.value = -6;
+    }
+    this.duck(false);
+    this.beeper.triggerAttackRelease("A5", 0.08, time);
+  }
+
   /** Pause keeps the loop position; resume continues from the same spot. */
   pause() {
     const t = Tone.getTransport();

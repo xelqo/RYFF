@@ -126,10 +126,27 @@ function Studio() {
     engine.play(s);
   }
 
+  /** Wait until the producer has been silent for a moment (it often adds a word after the tool call). */
   async function waitForAgentToFinish() {
-    const until = Date.now() + 6000;
-    while (convRef.current.isSpeaking && Date.now() < until) await sleep(100);
-    await sleep(250);
+    if (convRef.current.status !== "connected") return;
+    const until = Date.now() + 10000;
+    let quietSince = convRef.current.isSpeaking ? 0 : Date.now();
+    while (Date.now() < until) {
+      if (convRef.current.isSpeaking) quietSince = 0;
+      else if (!quietSince) quietSince = Date.now();
+      if (quietSince && Date.now() - quietSince >= 700) return;
+      await sleep(50);
+    }
+    debug.warn("record", "The producer was still talking after 10 s; recording anyway (its voice is muted)");
+  }
+
+  /** Silence the producer's speaker output so its voice can never end up in a take. */
+  function setAgentVolume(volume: number) {
+    try {
+      if (convRef.current.status === "connected") convRef.current.setVolume({ volume });
+    } catch {
+      /* not connected */
+    }
   }
 
   function setAgentMic(muted: boolean) {
@@ -178,15 +195,21 @@ function Studio() {
       const s = sessionRef.current!;
       await waitForAgentToFinish();
       setAgentMic(true); // otherwise the agent hears your clap as an interruption
+      setAgentVolume(0); // and its voice can't leak into the take
       setRecording(true);
       let take: { samples: Float32Array; sampleRate: number };
       let preRoll = 0;
       let steps = HUM_STEPS;
       if (kind === "drum") {
         engine.stop(); // record the hit clean, without the beat bleeding in
-        setCountIn(0);
-        setStatus(`Recording for ${HIT_SECONDS} seconds: make your sound a few times`);
-        const start = Tone.now() + 0.05;
+        setStatus("Wait for the beep…");
+        const beepAt = Tone.now() + 0.1;
+        engine.beep(beepAt); // the "go" cue comes from the app, not the producer
+        const start = beepAt + 0.3; // start after the beep has died away so it isn't recorded
+        Tone.getDraw().schedule(() => {
+          setCountIn(0);
+          setStatus(`Recording for ${HIT_SECONDS} seconds: make your sound a few times`);
+        }, beepAt);
         take = await mic.capture(start, start + HIT_SECONDS);
       } else {
         preRoll = PRE_ROLL;
@@ -200,6 +223,7 @@ function Studio() {
       setRecording(false);
       setCountIn(null);
       setAgentMic(false);
+      setAgentVolume(1);
       setStatus("Analysing your take in the Daytona sandbox…");
       debug.info("record", `Uploading ${kind} take (${(take.samples.length / take.sampleRate).toFixed(1)} s) for analysis`);
       const wav = encodeWav([take.samples], take.sampleRate);
@@ -223,6 +247,7 @@ function Studio() {
       setRecording(false);
       setCountIn(null);
       setAgentMic(false);
+      setAgentVolume(1);
       setStatus("");
     }
   }
@@ -340,8 +365,9 @@ function Studio() {
 
   // Music fades out while the producer talks, so voice and beat never fight (and the mic doesn't hear the beat).
   useEffect(() => {
-    engine.duck(quietWhileTalking && connected && conversation.isSpeaking);
-  }, [quietWhileTalking, connected, conversation.isSpeaking]);
+    // never duck during a take: you need to hear the beat while humming
+    engine.duck(quietWhileTalking && connected && conversation.isSpeaking && !recording);
+  }, [quietWhileTalking, connected, conversation.isSpeaking, recording]);
 
   // Keep the play/pause button in sync with the transport (the agent can pause too).
   useEffect(() => {
