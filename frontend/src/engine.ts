@@ -267,10 +267,13 @@ class Engine {
     vol.rampTo(on ? DUCKED_DB : MASTER_DB, on ? 0.15 : 0.6);
   }
 
-  /** 4 count-in clicks, then the song starts on "1". Returns the AudioContext time of that downbeat. */
-  playWithCountIn(s: Session, onCount: (n: number) => void): number {
+  /**
+   * 4 count-in clicks, then either the song starts on "1" (withBeat, needs headphones) or soft clicks keep
+   * time for `recordBeats` beats (no beat bleeding into the mic). Returns the AudioContext time of the "1".
+   */
+  playWithCountIn(s: Session, onCount: (n: number) => void, withBeat = true, recordBeats = 8): number {
     this.reset(s);
-    this.live = this.build(s, this.master, true);
+    if (withBeat) this.live = this.build(s, this.master, true);
     const click = new Tone.Synth({
       oscillator: { type: "square" },
       envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.01 },
@@ -285,8 +288,13 @@ class Engine {
       Tone.getDraw().schedule(() => onCount(4 - i), time);
     }
     const downbeat = first + 4 * beat;
+    if (!withBeat) {
+      for (let i = 0; i < recordBeats; i++) {
+        click.triggerAttackRelease(i % 4 === 0 ? "A5" : "E5", 0.03, downbeat + i * beat, 0.3);
+      }
+    }
     Tone.getDraw().schedule(() => onCount(0), downbeat);
-    Tone.getTransport().start(downbeat);
+    if (withBeat) Tone.getTransport().start(downbeat);
     return downbeat;
   }
 

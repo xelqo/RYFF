@@ -134,6 +134,11 @@ class Mic {
     }
     const peak = peakOf(out);
     debug.info("mic", `Captured ${(n / sr).toFixed(2)} s, ${chunks.length} chunks, peak level ${peak.toFixed(3)}`);
+    if (peak > 1) {
+      const g = 0.98 / peak;
+      for (let i = 0; i < n; i++) out[i] *= g;
+      debug.warn("mic", `That take was too loud (peak ${peak.toFixed(2)}) and was scaled down. Move back from the mic a little.`);
+    }
     if (peak < 0.003) {
       debug.warn("mic", "That take is silent. Check the input device and level in macOS System Settings → Sound → Input.");
     }

@@ -80,7 +80,7 @@ def pick_onsets(flux, rms, times, min_gap):
     if len(flux) < 3 or flux.max() <= 0:
         return []
     env = flux / flux.max()
-    gate = max(float(np.percentile(rms, 20)) * 4.0, 0.006)
+    gate = max(float(np.percentile(rms, 20)) * 3.0, 0.003)
     k = 8
     padded = np.pad(env, k, mode="edge")
     local = np.array([np.median(padded[i:i + 2 * k + 1]) for i in range(len(env))])
@@ -239,8 +239,10 @@ def snap_to_scale(m, tonic, scale):
 def analyse_hum(x, sr, kind, bpm, tonic, scale, steps, pre_roll):
     step_s = 60.0 / bpm / 4.0
     f0, conf, rms, times = yin_track(x, sr)
-    gate = max(float(np.percentile(rms, 30)) * 2.5, 0.01)
-    voiced = (conf > 0.75) & (rms > gate) & (f0 > 60) & (f0 < 1100)
+    # Noise floor from the quietest 10% of frames (people often hum the whole take, so a higher
+    # percentile would be the hum itself), never more than a fraction of the loudest frame.
+    gate = max(0.004, min(float(np.percentile(rms, 10)) * 3.0, 0.3 * float(rms.max())))
+    voiced = (conf > 0.6) & (rms > gate) & (f0 > 60) & (f0 < 1100)
     midi = np.where(voiced, 69 + 12 * np.log2(np.maximum(f0, 1e-6) / 440.0), np.nan)
     sm = midi.copy()  # median filter over voiced neighbours
     for i in range(len(midi)):

@@ -83,6 +83,7 @@ function Studio() {
   const [vibeInput, setVibeInput] = useState("");
   const [transport, setTransport] = useState<"started" | "paused" | "stopped">("stopped");
   const [quietWhileTalking, setQuietWhileTalking] = useState(true);
+  const [beatWhileHumming, setBeatWhileHumming] = useState(false); // full beat during hums: headphones only
   const [debugOpen, setDebugOpen] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
   const [micPermission, setMicPermission] = useState("unknown");
@@ -129,7 +130,7 @@ function Studio() {
   /** Wait until the producer has been silent for a moment (it often adds a word after the tool call). */
   async function waitForAgentToFinish() {
     if (convRef.current.status !== "connected") return;
-    const until = Date.now() + 10000;
+    const until = Date.now() + 4000;
     let quietSince = convRef.current.isSpeaking ? 0 : Date.now();
     while (Date.now() < until) {
       if (convRef.current.isSpeaking) quietSince = 0;
@@ -137,7 +138,7 @@ function Studio() {
       if (quietSince && Date.now() - quietSince >= 700) return;
       await sleep(50);
     }
-    debug.warn("record", "The producer was still talking after 10 s; recording anyway (its voice is muted)");
+    debug.warn("record", "The producer was still talking after 4 s; recording anyway (its voice is muted)");
   }
 
   /** Silence the producer's speaker output so its voice can never end up in a take. */
@@ -215,8 +216,8 @@ function Studio() {
         preRoll = PRE_ROLL;
         steps = HUM_STEPS;
         engine.duck(false); // the beat must be audible while you hum along
-        setStatus("Count-in… then go on the 1");
-        const downbeat = engine.playWithCountIn(s, (n) => setCountIn(n));
+        setStatus(beatWhileHumming ? "Count-in… then go on the 1" : "Count-in… then go on the 1 (clicks only, the beat comes back after)");
+        const downbeat = engine.playWithCountIn(s, (n) => setCountIn(n), beatWhileHumming, steps / 4);
         const recSeconds = steps * (60 / s.vibe.bpm / 4);
         take = await mic.capture(downbeat - preRoll, downbeat + recSeconds + 0.2);
       }
@@ -634,6 +635,10 @@ function Studio() {
             <label className="toggle">
               <input type="checkbox" checked={quietWhileTalking} onChange={(e) => setQuietWhileTalking(e.target.checked)} />
               Fade the music out while the producer talks
+            </label>
+            <label className="toggle">
+              <input type="checkbox" checked={beatWhileHumming} onChange={(e) => setBeatWhileHumming(e.target.checked)} />
+              Play the full beat while humming (headphones only; otherwise just clicks)
             </label>
             {exported && (
               <a className="download" href={exported.url} download={`loopstack-${v?.genre ?? "track"}.wav`}>
