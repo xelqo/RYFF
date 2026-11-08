@@ -24,6 +24,12 @@ slow, use 15–20 s versions and pre-generate v1 for the preset vibes.
 - [ ] Record → music auto-pauses → upload → v2 plays. Traits can be faked/random at first
 - [ ] Version history (go back, branch from an older version)
 
+## Milestone 2.5: the voice producer
+- [ ] Agent created in the ElevenLabs dashboard with the prompt + tools from AGENT.md (public agent first)
+- [ ] Frontend wires `@elevenlabs/react`: set_vibe / record_sound / play_version / skip_part / download_song
+- [ ] Mic muting: agent muted while music plays and while recording; "Talk to producer" pauses the music
+- [ ] Backend `GET /agent-token`; switch the agent to private
+
 ## Milestone 3: real traits via Daytona
 - [ ] `sandbox/analyse.py` (librosa: busyness, punch, brightness, pitch register, contour, smoothness)
 - [ ] Daytona snapshot + one sandbox per session; `mix.py` loudness + fades
@@ -32,10 +38,9 @@ slow, use 15–20 s versions and pre-generate v1 for the preset vibes.
 ## Milestone 4: polish
 - [ ] Free-text vibes (keyword map to the genre table; small LLM call optional)
 - [ ] Download, nicer visuals, loading animation during generation
-- [ ] Optional: say your vibe (ElevenLabs speech-to-text)
 
 ## Cut list (in this order)
-speech-to-text → free-text vibes (keep presets) → branching history (keep linear undo) → real traits (fall back to
+agent → text-only agent (keep buttons) only if the voice agent is NOT a hackathon requirement · free-text vibes (keep presets) → branching history (keep linear undo) → real traits (fall back to
 fixed words per kind; but then Daytona only does mixing, so keep traits if at all possible)
 
 ## Out of scope (decided)

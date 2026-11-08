@@ -4,17 +4,18 @@
 clap something and the song gets drums that feel like your clap; hum and it gets a melody shaped like your hum.
 Every sound you add makes a new, fuller version of the song.
 
-Built for <hackathon name> with **ElevenLabs Music** (generates every version of the song) and **Daytona**
-(sandboxed audio analysis + mixing).
+Built for <hackathon name> with **ElevenLabs** (a voice agent "producer" that runs the session + **Music**, which
+generates every version of the song) and **Daytona** (sandboxed audio analysis + mixing).
 
 ## The 10-second pitch
 You don't need to play an instrument or know music words. Make a noise, and Loopstack turns how it *feels* (fast,
 punchy, soaring, low and smooth) into a part of your song.
 
 ## How a session goes
+A voice agent, **the producer**, talks you through it (the on-screen buttons do the same things):
 1. **Choose a vibe** (text or preset): "chill lo-fi", "dark trap", "summer house". It's fixed for the session.
 2. **Version 1 plays:** a beat in that vibe.
-3. **The app asks for a sound**, e.g. "Want drums? Clap or tap something." (Every step can be skipped.)
+3. **The producer asks for a sound**, e.g. "Want drums? Clap or tap something after the beep." (Every step can be skipped.)
 4. **Press record → the music pauses.** Recording only ever happens with no music playing.
 5. We analyse your sound for rough traits, describe it in words, and **regenerate the whole song** with the new
    part, building on the previous version.
@@ -33,7 +34,7 @@ rising vs falling). The result isn't a copy of what you did.
                        pitch, contour)    └─► words ─► composition plan ─► ElevenLabs Music ─► song v2, v3 …
 ```
 Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · API notes: [docs/APIS.md](docs/APIS.md) ·
-Plan: [docs/PLAN.md](docs/PLAN.md) · Team: [docs/TEAM.md](docs/TEAM.md) · Demo: [docs/DEMO.md](docs/DEMO.md)
+Voice agent: [docs/AGENT.md] · Plan: [docs/PLAN.md](docs/PLAN.md) · Team: [docs/TEAM.md](docs/TEAM.md) · Demo: [docs/DEMO.md](docs/DEMO.md)
 
 ## Repo layout (planned)
 ```

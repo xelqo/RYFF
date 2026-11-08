@@ -7,10 +7,10 @@ coordinate in the group chat first.
 
 | Person | Role | Owns | Branch |
 |---|---|---|---|
-| **Lucas** | Frontend | `frontend/` | `frontend` |
+| **Lucas** | Frontend + voice agent wiring | `frontend/` | `frontend` |
 | **Derik** | Audio analysis + Daytona | `sandbox/`, `backend/daytona_runner.py` | `sandbox` |
 | **Alex** | Backend + ElevenLabs Music, integration lead | `backend/` (except the files below), `spikes/music_test.py` | `backend` |
-| **Avi** | Sound/prompt design + demo | `backend/vibes.py`, `backend/words.py`, `spikes/listen_test.py`, `docs/` | `sound` |
+| **Avi** | Sound/prompt design + voice agent config + demo | `backend/vibes.py`, `backend/words.py`, `spikes/listen_test.py`, `docs/` | `sound` |
 
 **Everyone reads first:** `CLAUDE.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/PLAN.md`.
 
@@ -25,7 +25,7 @@ coordinate in the group chat first.
 ---
 
 ## Lucas: Frontend
-**Also read:** `docs/DEMO.md`
+**Also read:** `docs/DEMO.md`, `docs/AGENT.md`
 
 **Brief for your agent:**
 ```
@@ -39,12 +39,16 @@ Build a React + Vite + TypeScript app:
 5. A "producing…" state that shows the traits we heard (e.g. "busy · punchy · bright") while the next version
    generates. This wait is part of the experience, so make it feel good.
 6. Version history: click any version to play it; adding a sound from an old version sends from_version.
+7. Voice agent ("the producer"): wire @elevenlabs/react exactly as in docs/AGENT.md (client tools set_vibe,
+   record_sound, play_version, skip_part, download_song). The agent's mic must be muted while music plays and
+   while a sound is recorded; a "Talk to producer" button pauses the music and unmutes it. Every tool must also
+   have an on-screen button, so the app works with no agent.
 The backend isn't ready yet: create frontend/mock/ with mock Session/Part/Version JSON matching
 docs/ARCHITECTURE.md and a fake API module with the same endpoints, so switching to the real backend
 (http://localhost:8000) is a one-line change. Use royalty-free mp3s as stand-in versions.
 Make it look great on a projector and work on a phone. Commit small and often.
 ```
-**Done when:** you can pick a vibe, hear v1, record a clap (music pauses), see "producing…", and hear v2 (mocked at
+**Done when:** you can pick a vibe, hear v1, record a clap (music pauses), see "producing…", and hear v2, by buttons AND by talking to the producer, (mocked at
 first, then real once Alex's backend is merged, ~hour 8).
 
 ---
@@ -89,7 +93,8 @@ FIRST do PLAN.md step 0 in spikes/music_test.py with ElevenLabs Music (model mus
  d) same song with "busy punchy drums" vs "sparse soft drums"
 Save every mp3 in spikes/out/ with clear names and write the findings into docs/APIS.md (resolve the ⚠︎ items).
 THEN build a FastAPI backend: POST /sessions {vibe_text}, POST /sessions/{id}/parts (multipart audio, kind,
-from_version?), GET /sessions/{id}, GET /files/{path}. In-memory state. A composition-plan builder
+from_version?), GET /sessions/{id}, GET /agent-token (mints an ElevenLabs Agents conversation token with the
+server key, see docs/AGENT.md), GET /files/{path}. In-memory state. A composition-plan builder
 (vibe + all parts' words -> 2-3 chunks, conditioning_ref on the first chunk pointing at the previous version, same
 seed every version). Call backend/daytona_runner.py (Derik) for traits + mixing, and backend/vibes.py +
 backend/words.py (Avi) for styles and words. Stub those until they land. Keys from .env only. CORS for Vite.
@@ -100,11 +105,11 @@ frontend end to end. You also review and merge everyone's PRs.
 ---
 
 ## Avi: Sound/prompt design + demo
-**Also read:** `docs/APIS.md` (Music section), `docs/DEMO.md`
+**Also read:** `docs/APIS.md` (Music + Agents sections), `docs/DEMO.md`, `docs/AGENT.md`
 
 **Brief for your agent:**
 ```
-I am Avi, owner of sound/prompt design and the demo. Work in backend/vibes.py, backend/words.py,
+I am Avi, owner of sound/prompt design, the voice agent config, and the demo. Work in backend/vibes.py, backend/words.py,
 spikes/listen_test.py and docs/, on the branch "sound".
 1. backend/vibes.py: 4 preset vibes (chill lo-fi, dark trap, summer house, upbeat pop), each with a styles list,
    bpm, negative styles (always include vocals/singing), and the instrument for each part kind
@@ -114,6 +119,9 @@ spikes/listen_test.py and docs/, on the branch "sound".
 3. spikes/listen_test.py: generate the same vibe with different words via ElevenLabs Music (15-30 s to save
    credits) so I can judge by ear which phrases really change the sound. Log results in docs/SOUND_NOTES.md
    and tune the words until every added part is clearly audible.
+4. Voice agent: write the agent's setup steps into docs/AGENT.md as I create it in the ElevenLabs dashboard
+   (voice, first message, system prompt, the 5 blocking client tools with their params). Test it in the
+   dashboard, then tune the prompt so replies stay 1-2 sentences and it asks for one part at a time.
 Later: using docs/DEMO.md, write the Devpost text, a 5-slide outline and a 2-minute spoken script.
 ```
 **Done when:** every preset sounds good on its own, each added part is obviously audible in the next version, and

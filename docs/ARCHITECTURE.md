@@ -8,8 +8,13 @@
    words to the song's description.
 4. **Recording only happens while the music is paused.** That means no bleed from the speakers, and the pause hides
    generation time.
-5. **The app guides the user** with prompts for parts (drums → bass → melody → anything else). Each is optional,
+5. **A voice agent ("the producer", ElevenLabs Agents) guides the user** with spoken prompts for parts (drums → bass → melody → anything else). Each is optional,
    and the user can add more than one of a kind.
+
+## Voice agent
+Full design in [AGENT.md](AGENT.md). It lives in the frontend (`@elevenlabs/react`), drives the app through
+client tools (`set_vibe`, `record_sound`, `play_version`, `skip_part`, `download_song`), and is **muted whenever
+music plays or a sound is being recorded**. The backend only mints its auth token (`GET /agent-token`).
 
 ## Data model
 ```ts
@@ -96,6 +101,7 @@ what we "heard": *"busy · punchy · bright"*.
 POST /sessions                     {vibe_text}              → Session (with v1)
 POST /sessions/{id}/parts          multipart: audio, kind, from_version? → {part, version}
 GET  /sessions/{id}                                          → Session
+GET  /agent-token                                            → {token}  (ElevenLabs Agents conversation token)
 GET  /files/{path}
 ```
 In-memory session state is fine for the hackathon.

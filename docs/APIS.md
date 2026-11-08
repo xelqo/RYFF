@@ -35,8 +35,18 @@ Auth header `xi-api-key: $ELEVENLABS_API_KEY`. Python SDK: `pip install elevenla
 }
 ```
 
+## ElevenLabs Agents (the voice "producer")
+- React SDK: `npm i @elevenlabs/react` → `useConversation({ clientTools, micMuted, onMessage, … })`.
+- `startSession({ agentId })` for a public agent, or `{ conversationToken }` (WebRTC) / `{ signedUrl }` (WebSocket)
+  minted server-side for a private one. `endSession()`, `setVolume({ volume })`.
+- `sendContextualUpdate(text)` gives the agent info without making it reply; `sendUserMessage(text)` makes it reply.
+- Client tools: keys in `clientTools` must match tool names configured in the dashboard; the returned value is sent
+  back to the agent. Mark tools as **blocking** in the dashboard so the agent waits for the result.
+- `textOnly: true` runs it without the mic (fallback).
+- ⚠︎ Look up the exact server endpoint for minting a conversation token.
+- Full design + system prompt: [AGENT.md](AGENT.md).
+
 ## ElevenLabs extras (optional)
-- **Speech-to-text (Scribe)**: let users *say* their vibe instead of typing it.
 - **Sound Effects** `POST /v1/sound-generation` (`text`, `duration_seconds` 0.5–30, `loop`, `prompt_influence`):
   a UI "ding" or a texture preview. Not needed for the core.
 
