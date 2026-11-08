@@ -144,6 +144,78 @@ def synth_note(midi, dur, sr, vel=0.8):
     return (tone * env * tremolo * vel).astype(np.float32)
 
 
+def clean_melody(notes, tonic, scale, phrase_steps):
+    """Make a sloppy hum sound intentional: 8th-note timing, no blips, legato, no wild leaps, comfortable
+    register, phrase ends on a chord tone of the home chord. Steps are 16ths on the song grid."""
+    sc = SCALES[scale]
+    ns = []
+    for nt in sorted(notes, key=lambda n: n["start_step"]):
+        s = int(np.floor(nt["start_step"] / 2.0 + 0.5)) * 2               # starts on 8th notes
+        if ns and nt["midi"] == ns[-1]["midi"] and s <= ns[-1]["start_step"] + ns[-1]["dur_steps"] + 1:
+            continue                                                      # repeated note = one longer note
+        if ns and s <= ns[-1]["start_step"]:                              # same slot as the previous note: next 8th
+            s = ns[-1]["start_step"] + 2
+        if s >= phrase_steps:
+            continue
+        ns.append({"start_step": s, "dur_steps": max(2, int(round(nt["dur_steps"] / 2.0)) * 2),
+                   "midi": nt["midi"], "velocity": nt.get("velocity", 0.8)})
+    if not ns:
+        return ns
+    for i, nt in enumerate(ns):                                           # legato: hold to the next note
+        nxt = ns[i + 1]["start_step"] if i + 1 < len(ns) else phrase_steps
+        nt["dur_steps"] = max(2, min(nxt - nt["start_step"], 8))
+        if i:                                                             # fold leaps bigger than a 5th
+            while nt["midi"] - ns[i - 1]["midi"] > 7:
+                nt["midi"] -= 12
+            while ns[i - 1]["midi"] - nt["midi"] > 7:
+                nt["midi"] += 12
+    centre = sorted(n["midi"] for n in ns)[len(ns) // 2]                  # keep it around C4–G5
+    shift = 12 * int(round((67 - centre) / 12.0))
+    for nt in ns:
+        nt["midi"] += shift
+    last = ns[-1]                                                         # resolve: end on 1, 3 or 5 of the key
+    home = [(tonic + sc[d]) % 12 for d in (0, 2, 4)]
+    best = min((last["midi"] + d for d in range(-4, 5) if (last["midi"] + d) % 12 in home), key=lambda m: abs(m - last["midi"]))
+    last["midi"] = best
+    last["dur_steps"] = max(last["dur_steps"], 4)
+    return ns
+
+
+def bass_from_melody(notes, tonic, scale, phrase_steps):
+    """One chord per bar (I, IV, V, vi or i, iv, v, VI) chosen to fit the hummed notes; bass plays the root low on
+    beats 1 and 3, with a short pickup into the next bar."""
+    sc = SCALES[scale]
+    degrees = [0, 3, 4, 5]                                                # scale degrees of the chord roots
+    bass = []
+    for bar in range(phrase_steps // 16):
+        weight = [0.0] * 12
+        for nt in notes:
+            a, b = max(nt["start_step"], bar * 16), min(nt["start_step"] + nt["dur_steps"], bar * 16 + 16)
+            if b > a:
+                weight[nt["midi"] % 12] += b - a
+        def score(d):
+            tones = [(tonic + sc[(d + k) % 7]) % 12 for k in (0, 2, 4)]
+            return sum(weight[p] for p in tones) + (0.5 if d == 0 else 0)  # small preference for the home chord
+        d = max(degrees, key=score) if bar else 0                         # first bar: home chord
+        root = 36 + (tonic + sc[d]) % 12                                  # C2..B2
+        s0 = bar * 16
+        bass += [{"start_step": s0, "dur_steps": 7, "midi": root, "velocity": 0.9},
+                 {"start_step": s0 + 8, "dur_steps": 5, "midi": root, "velocity": 0.75},
+                 {"start_step": s0 + 14, "dur_steps": 2, "midi": root + 12 if (bar % 2) else root + 7, "velocity": 0.6}]
+    return bass
+
+
+def synth_bass(midi, dur, sr, vel=0.9):
+    f = 440.0 * 2 ** ((midi - 69) / 12)
+    n = int((dur + 0.12) * sr)
+    t = np.arange(n) / sr
+    tone = np.sin(2 * np.pi * f * t) + 0.3 * np.sin(2 * np.pi * 2 * f * t) + 0.08 * np.sin(2 * np.pi * 3 * f * t)
+    env = np.minimum(1.0, t / 0.006) * (0.75 + 0.25 * np.exp(-t / 0.15))
+    rel = t > dur
+    env[rel] *= np.exp(-(t[rel] - dur) / 0.04)
+    return (tone * env * vel).astype(np.float32)
+
+
 def render_melody(spec, out, sr, first, beat, key, mono):
     """Loop the hummed phrase over the song, on the song's beat grid, in the song's key."""
     notes, note_bpm = spec["notes"], float(spec.get("bpm") or 100)
@@ -153,24 +225,28 @@ def render_melody(spec, out, sr, first, beat, key, mono):
     notes, shift = fit_melody(notes, tonic, scale)
     src_step = 60.0 / note_bpm / 4                       # seconds per 16th in the take
     step = beat / 4                                       # seconds per 16th in the song
-    end_steps = max(n["start_step"] + n["dur_steps"] for n in notes)
-    # phrase length on the song grid, rounded up to whole bars (16 steps)
-    phrase_steps = int(np.ceil(end_steps * src_step / step / 16.0)) * 16 or 16
+    grid = [{**n, "start_step": int(round(n["start_step"] * src_step / step)),
+             "dur_steps": max(1, int(round(n["dur_steps"] * src_step / step)))} for n in notes]
+    end_steps = max(n["start_step"] + n["dur_steps"] for n in grid)
+    phrase_steps = min(64, max(16, int(np.ceil(end_steps / 16.0)) * 16))   # 1–4 bars
+    grid = clean_melody(grid, tonic, scale, phrase_steps)
+    bass = bass_from_melody(grid, tonic, scale, phrase_steps) if spec.get("bass", True) else []
     layer = np.zeros(len(out), np.float32)
+    bass_layer = np.zeros(len(out), np.float32)
     start = first
     while start < len(out) / sr - 0.2:
-        for nt in notes:
-            s_steps = round(nt["start_step"] * src_step / step)
-            d_steps = max(1, round(nt["dur_steps"] * src_step / step))
-            if s_steps >= phrase_steps:
-                continue
-            t0 = start + s_steps * step
-            tone = synth_note(nt["midi"], d_steps * step, sr, nt.get("velocity", 0.8))
-            i = int(t0 * sr)
-            j = min(len(layer), i + len(tone))
-            if i < len(layer):
-                layer[i:j] += tone[: j - i]
+        for target, seq, synth in ((layer, grid, synth_note), (bass_layer, bass, synth_bass)):
+            for nt in seq:
+                t0 = start + nt["start_step"] * step
+                tone = synth(nt["midi"], nt["dur_steps"] * step, sr, nt.get("velocity", 0.8))
+                i = int(t0 * sr)
+                j = min(len(target), i + len(tone))
+                if i < len(target):
+                    target[i:j] += tone[: j - i]
         start += phrase_steps * step
+    peak = float(np.abs(layer).max()) or 1.0
+    if np.abs(bass_layer).max() > 0:                     # bass sits a little under the melody
+        layer = layer + bass_layer * (0.8 * peak / float(np.abs(bass_layer).max()))
     return layer, f"{NAMES[tonic]} {scale}"
 
 
