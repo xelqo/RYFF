@@ -121,7 +121,8 @@ class AnalysisRunner:
         self.start("")
         wav = to_wav(Path(local_audio))
         try:
-            result, files = runners.get_runner().run(wav.read_bytes(), ["--kind", KIND_ARG[kind], "--bpm", str(bpm)])
+            extra = ["--scale", "chromatic", "--steps", "64"] if kind in ("bass", "melody") else []
+            result, files = runners.get_runner().run(wav.read_bytes(), ["--kind", KIND_ARG[kind], "--bpm", str(bpm), *extra])
         except runners.AnalysisError as e:
             return {"error": str(e)}
         if not result.get("ok"):
@@ -143,6 +144,8 @@ class AnalysisRunner:
             return {"error": result.get("message") or "too quiet, ask again"}
         else:
             traits = to_traits(kind, result)
+            if kind in ("bass", "melody") and result.get("notes"):
+                traits["_notes"] = {"notes": result["notes"], "bpm": bpm}    # rendered into the mix as-is
         traits["runner"] = result.get("runner")
         for name, blob in files.items():           # e.g. hit.wav → part_<id>.hit.wav next to the take
             out = Path(local_audio).with_suffix(f".{name}")
@@ -164,32 +167,48 @@ class AnalysisRunner:
         key["runner"] = result.get("runner")
         return key
 
-    def mix(self, local_mp3: str, hits: list, bpm: int | None = None) -> str:
-        """Layer the user's real hits onto the song's beat (sandbox/mix.py, run in Daytona), then -14 LUFS.
-        hits: [(hit_wav_path, slot)]. Any failure falls back to the unmixed song so a version is never lost."""
-        out = local_mp3.replace(".raw.mp3", ".mp3")
+    def mix(self, local_mp3: str, hits: list, bpm: int | None = None, melodies: list | None = None,
+            key: str | None = None, out: str | None = None) -> str:
+        """Layer the user's real hits and hummed melodies onto the song's beat (sandbox/mix.py, run in Daytona),
+        then -14 LUFS. hits: [(hit_wav_path, slot)]; melodies: [{"notes": [...], "bpm": N}].
+        Any failure falls back to the unmixed song so a version is never lost."""
+        import json
+        melodies = melodies or []
+        out = out or local_mp3.replace(".raw.mp3", ".mp3")
         ff = _ffmpeg()
-        if not hits or not ff:
+        if not (hits or melodies) or not ff:
             shutil.copyfile(local_mp3, out)
             return out
-        song_wav = local_mp3.replace(".raw.mp3", ".song.wav")
-        mixed_wav = local_mp3.replace(".raw.mp3", ".mixed.wav")
+        song_wav = out.replace(".mp3", ".song.wav")
+        mixed_wav = out.replace(".mp3", ".mixed.wav")
+        mel_files = []
         try:
             subprocess.run([ff, "-v", "error", "-y", "-i", local_mp3, "-ac", "2", "-ar", "44100", "-sample_fmt", "s16",
                             song_wav], check=True, timeout=60)
             names = [f"hit{i}.wav" for i in range(len(hits))]
             args = ["--bpm", str(bpm or 0)] + [a for n, (_, slot) in zip(names, hits) for a in ("--hit", f"{n}:{slot or 'snare'}")]
-            result = self._run_mix(song_wav, [h for h, _ in hits], names, args, mixed_wav)
+            files = [h for h, _ in hits]
+            for i, mel in enumerate(melodies):
+                path = out.replace(".mp3", f".mel{i}.json")
+                Path(path).write_text(json.dumps(mel))
+                mel_files.append(path)
+                files.append(path)
+                names.append(f"mel{i}.json")
+                args += ["--melody", f"mel{i}.json"]
+            if key:
+                args += ["--key", key]
+            result = self._run_mix(song_wav, files, names, args, mixed_wav)
             if not result.get("ok"):
                 raise RuntimeError(result.get("error"))
-            log.info("mixed %d hits at %s BPM via %s", result.get("placed", 0), result.get("bpm"), result.get("runner"))
+            log.info("mixed %d hits + %d melodies (%s) at %s BPM via %s", result.get("placed", 0),
+                     result.get("melodies", 0), result.get("melody_key"), result.get("bpm"), result.get("runner"))
             subprocess.run([ff, "-v", "error", "-y", "-i", mixed_wav, "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
                             "-ar", "44100", "-b:a", "192k", out], check=True, timeout=120)
         except Exception as e:
             log.warning("mix failed (%s); using the unmixed song", e)
             shutil.copyfile(local_mp3, out)
         finally:
-            for f in (song_wav, mixed_wav):
+            for f in (song_wav, mixed_wav, *mel_files):
                 Path(f).unlink(missing_ok=True)
         return out
 
