@@ -27,6 +27,8 @@ export const health = () => req<Health>("/api/health");
 
 export const createSession = (vibe_text: string) => req<Session>("/api/sessions", json("POST", { vibe_text }));
 
+export const getSession = (id: string) => req<Session>(`/api/sessions/${id}`);
+
 export const changeVibe = (id: string, vibe_text: string) =>
   req<Session>(`/api/sessions/${id}/vibe`, json("POST", { vibe_text }));
 

@@ -145,6 +145,11 @@ def create_session(body: VibeIn):
     return s
 
 
+@app.get("/api/sessions/{sid}")
+def read_session(sid: str):
+    return get_session(sid)
+
+
 @app.post("/api/sessions/{sid}/vibe")
 def change_vibe(sid: str, body: VibeIn):
     """Curveball-proof: a new vibe keeps every part. Hums move to the new key, claps stay claps."""
@@ -252,7 +257,9 @@ def add_backing(sid: str, body: BackingIn):
         path = eleven.compose_music(CACHE, prompt, length_ms)
     except eleven.ElevenLabsError as e:
         raise HTTPException(502, str(e))
-    s = get_session(sid)  # re-read: the vibe may have changed while the track was composing
+    s = get_session(sid)
+    if s["vibe"] is not v:  # the vibe changed while the track was composing, so it no longer fits
+        raise HTTPException(409, "The vibe changed while the backing track was composing, so it was dropped.")
     s["parts"] = [p for p in s["parts"] if p["kind"] != "backing"]
     s["parts"].append({"id": uuid.uuid4().hex[:8], "name": "backing track", "kind": "backing", "muted": False,
                        "volume": -9.0, "loop_url": file_url(path), "prompt": prompt})

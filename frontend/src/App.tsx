@@ -13,6 +13,7 @@ const PRESETS = ["chill lo-fi", "dark trap", "summer house", "90s boom bap", "ha
 const HIT_SECONDS = 3;
 const HUM_STEPS = 32; // hums and textures are 2 bars, looped
 const PRE_ROLL = 0.15;
+const BUSY_MESSAGE = "Still working on the last change. Try again in a moment.";
 
 type Line = { who: "you" | "producer" | "app"; text: string };
 type RecordKind = "drum" | "melody" | "bass" | "texture";
@@ -71,6 +72,8 @@ function Studio() {
   const [vibeInput, setVibeInput] = useState("");
   const [transport, setTransport] = useState<"started" | "paused" | "stopped">("stopped");
   const [quietWhileTalking, setQuietWhileTalking] = useState(true);
+  const [muteWhilePlaying, setMuteWhilePlaying] = useState(false);
+  const [locked, setLocked] = useState(false);
   const busy = useRef(false);
 
   const log = useCallback((who: Line["who"], text: string) => {
@@ -102,6 +105,28 @@ function Studio() {
     engine.play(s);
   }
 
+  /** For edits to the song: only restart the loop if it was already playing. */
+  async function refresh(s: Session) {
+    const wasPlaying = engine.running;
+    await engine.loadSession(s);
+    setSession(s);
+    if (wasPlaying) engine.play(s);
+    else engine.stop(); // a paused transport would resume the old arrangement
+  }
+
+  /** One change at a time: a take must never have the loop restarted underneath it. */
+  async function exclusive(fn: () => Promise<string>): Promise<string> {
+    if (busy.current) return BUSY_MESSAGE;
+    busy.current = true;
+    setLocked(true);
+    try {
+      return await fn();
+    } finally {
+      busy.current = false;
+      setLocked(false);
+    }
+  }
+
   async function waitForAgentToFinish() {
     const until = Date.now() + 6000;
     while (convRef.current.isSpeaking && Date.now() < until) await sleep(100);
@@ -125,7 +150,11 @@ function Studio() {
   }
 
   // ------------------------------------------------------------ actions (used by the agent AND the buttons)
-  async function setVibe(text: string): Promise<string> {
+  function setVibe(text: string): Promise<string> {
+    return exclusive(() => applyVibe(text));
+  }
+
+  async function applyVibe(text: string): Promise<string> {
     const vibeText = (text || "").trim() || "chill lo-fi";
     setStatus(`Building a ${vibeText} kit with ElevenLabs…`);
     try {
@@ -141,13 +170,16 @@ function Studio() {
     }
   }
 
-  async function recordPart(kindRaw: string, name?: string): Promise<string> {
-    if (busy.current) return "Already recording. Wait for this take to finish.";
-    busy.current = true;
+  function recordPart(kindRaw: string, name?: string): Promise<string> {
+    return exclusive(() => takePart(kindRaw, name));
+  }
+
+  async function takePart(kindRaw: string, name?: string): Promise<string> {
     const { kind, slot } = normalizeKind(kindRaw);
     try {
       await Tone.start();
-      if (!sessionRef.current) await setVibe("chill lo-fi");
+      await mic.init(); // before any timing: the permission prompt can take a while
+      if (!sessionRef.current) await applyVibe("chill lo-fi");
       const s = sessionRef.current!;
       await waitForAgentToFinish();
       setAgentMic(true); // otherwise the agent hears your clap as an interruption
@@ -157,26 +189,25 @@ function Studio() {
       let steps = HUM_STEPS;
       if (kind === "drum") {
         engine.stop(); // record the hit clean, without the beat bleeding in
+        engine.beep();
         setCountIn(0);
         setStatus(`Recording for ${HIT_SECONDS} seconds: make your sound a few times`);
-        const start = Tone.now() + 0.05;
+        const start = Tone.now() + 0.2; // after the beep, so it isn't in the take
         take = await mic.capture(start, start + HIT_SECONDS);
       } else {
         preRoll = PRE_ROLL;
         steps = HUM_STEPS;
         engine.duck(false); // the beat must be audible while you hum along
-        setStatus("Count-in… then go on the 1");
+        setStatus("Count-in… then go on the 1 (headphones keep the beat out of your take)");
         const downbeat = engine.playWithCountIn(s, (n) => setCountIn(n));
         const recSeconds = steps * (60 / s.vibe.bpm / 4);
         take = await mic.capture(downbeat - preRoll, downbeat + recSeconds + 0.2);
       }
       setRecording(false);
       setCountIn(null);
-      setAgentMic(false);
       setStatus("Analysing your take in the Daytona sandbox…");
       const wav = encodeWav([take.samples], take.sampleRate);
       const res = await api.addPart(s.id, wav, { kind, name, slot, preRoll, steps });
-      busy.current = false;
       await apply(res.session);
       const p = res.part;
       const what =
@@ -190,33 +221,35 @@ function Studio() {
       if (sessionRef.current) engine.play(sessionRef.current);
       return `That take didn't work: ${errMsg(e)}`;
     } finally {
-      busy.current = false;
       setRecording(false);
       setCountIn(null);
-      setAgentMic(false);
       setStatus("");
     }
   }
 
-  async function patchPart(query: string, patch: { slot?: string; muted?: boolean }, verb: string): Promise<string> {
-    const s = sessionRef.current;
-    if (!s) return "There's no song yet. Set a vibe first.";
-    const p = findPart(s, query);
-    if (!p) return `I couldn't find a part called "${query}". ${describe(s)}`;
-    if (patch.slot && !SLOTS.includes(patch.slot as Slot)) return `Slot must be one of: ${SLOTS.join(", ")}.`;
-    const ns = await api.updatePart(s.id, p.id, patch);
-    await apply(ns);
-    return `${verb} "${p.name}". ${describe(ns)}`;
+  function patchPart(query: string, patch: { slot?: string; muted?: boolean }, verb: string): Promise<string> {
+    return exclusive(async () => {
+      const s = sessionRef.current;
+      if (!s) return "There's no song yet. Set a vibe first.";
+      const p = findPart(s, query);
+      if (!p) return `I couldn't find a part called "${query}". ${describe(s)}`;
+      if (patch.slot && !SLOTS.includes(patch.slot as Slot)) return `Slot must be one of: ${SLOTS.join(", ")}.`;
+      const ns = await api.updatePart(s.id, p.id, patch);
+      await refresh(ns);
+      return `${verb} "${p.name}". ${describe(ns)}`;
+    });
   }
 
-  async function removePart(query: string): Promise<string> {
-    const s = sessionRef.current;
-    if (!s) return "There's no song yet.";
-    const p = findPart(s, query);
-    if (!p) return `I couldn't find a part called "${query}". ${describe(s)}`;
-    const ns = await api.removePart(s.id, p.id);
-    await apply(ns);
-    return `Removed "${p.name}". ${describe(ns)}`;
+  function removePart(query: string): Promise<string> {
+    return exclusive(async () => {
+      const s = sessionRef.current;
+      if (!s) return "There's no song yet.";
+      const p = findPart(s, query);
+      if (!p) return `I couldn't find a part called "${query}". ${describe(s)}`;
+      const ns = await api.removePart(s.id, p.id);
+      await refresh(ns);
+      return `Removed "${p.name}". ${describe(ns)}`;
+    });
   }
 
   async function addBacking(style?: string) {
@@ -228,11 +261,15 @@ function Studio() {
     setStatus("Composing a backing track with ElevenLabs Music…");
     log("app", "Composing a backing track…");
     try {
-      const ns = await api.addBacking(s.id, style);
-      while (busy.current) await sleep(200); // never restart the loop in the middle of a take
-      await apply(ns);
+      await api.addBacking(s.id, style);
+      let ns: Session;
+      do {
+        while (busy.current) await sleep(200); // never restart the loop in the middle of a take
+        ns = await api.getSession(s.id); // refetch so a part added while waiting isn't lost
+      } while (busy.current);
+      await refresh(ns);
       log("app", "Backing track is in.");
-      tellAgent("The backing track is ready and now playing under the beat.");
+      tellAgent(engine.running ? "The backing track is ready and now playing under the beat." : "The backing track is ready. The music is paused, so it will be heard on play.");
     } catch (e) {
       log("app", `Backing track failed: ${errMsg(e)}`);
       tellAgent(`The backing track failed: ${errMsg(e)}`);
@@ -242,12 +279,14 @@ function Studio() {
   }
 
   function pauseMusic(): string {
+    if (busy.current) return BUSY_MESSAGE;
     if (!engine.running) return "The music is already paused.";
     engine.pause();
     return "Music paused.";
   }
 
   function resumeMusic(): string {
+    if (busy.current) return BUSY_MESSAGE;
     const s = sessionRef.current;
     if (!s) return "There's no song yet. Set a vibe first.";
     if (engine.paused) engine.resume();
@@ -312,6 +351,12 @@ function Studio() {
   useEffect(() => {
     engine.duck(quietWhileTalking && connected && conversation.isSpeaking);
   }, [quietWhileTalking, connected, conversation.isSpeaking]);
+
+  // The producer never hears a take, and in speaker mode never hears the beat either.
+  const micMuted = recording || (muteWhilePlaying && transport === "started");
+  useEffect(() => {
+    setAgentMic(micMuted);
+  }, [micMuted, connected]);
 
   // Keep the play/pause button in sync with the transport (the agent can pause too).
   useEffect(() => {
@@ -416,8 +461,19 @@ function Studio() {
         <div className={`pill ${health?.mode === "daytona" && health.sandbox === "ready" ? "ok" : "warn"}`} title={health?.sandbox_error ?? ""}>
           {sandboxLabel}
         </div>
-        <button className={`talk ${connected ? "on" : ""}`} onClick={toggleTalk}>
-          {connected ? (conversation.isSpeaking ? "Producer talking… (end)" : "Listening… (end)") : "Talk to the producer"}
+        <button
+          className={`talk ${connected ? "on" : ""}`}
+          onClick={toggleTalk}
+          disabled={!AGENT_ID}
+          title={AGENT_ID ? undefined : "The voice producer isn't set up yet. Use the controls on the right."}
+        >
+          {connected
+            ? conversation.isSpeaking
+              ? "Producer talking… (end)"
+              : "Listening… (end)"
+            : AGENT_ID
+              ? "Talk to the producer"
+              : "Producer not connected"}
         </button>
       </header>
 
@@ -430,9 +486,11 @@ function Studio() {
       <main>
         <section className="stage">
           <Visualizer getAgent={getAgent} analyser={engine.analyser} countIn={countIn} recording={recording} />
-          <div className="status">{status || (connected ? "Say a vibe, clap, hum, or ask for changes." : " ")}</div>
+          <div className="status">
+            {status || (connected ? "Say a vibe, clap, hum, or ask for changes." : session ? "Add a clap or a hum to make it yours." : "Pick a vibe to start your track.")}
+          </div>
           {session && (
-            <button className="transport" onClick={togglePlay} disabled={recording} title="Spacebar">
+            <button className="transport" onClick={togglePlay} disabled={locked} title="Spacebar">
               {transport === "started" ? "❚❚  Pause" : "▶  Play"}
             </button>
           )}
@@ -455,7 +513,7 @@ function Studio() {
             <h3>Vibe</h3>
             <div className="chips">
               {PRESETS.map((p) => (
-                <button key={p} onClick={manual(() => setVibe(p))}>
+                <button key={p} onClick={manual(() => setVibe(p))} disabled={locked}>
                   {p}
                 </button>
               ))}
@@ -485,16 +543,16 @@ function Studio() {
                 </div>
                 <div className="part-actions">
                   {p.kind === "drum" && (
-                    <select value={p.slot} onChange={(e) => void safe(() => patchPart(p.name, { slot: e.target.value }, "Moved"))}>
+                    <select value={p.slot} disabled={locked} onChange={(e) => void safe(() => patchPart(p.name, { slot: e.target.value }, "Moved"))}>
                       {SLOTS.map((s) => (
                         <option key={s}>{s}</option>
                       ))}
                     </select>
                   )}
-                  <button onClick={manual(() => patchPart(p.name, { muted: !p.muted }, p.muted ? "Unmuted" : "Muted"))}>
+                  <button disabled={locked} onClick={manual(() => patchPart(p.name, { muted: !p.muted }, p.muted ? "Unmuted" : "Muted"))}>
                     {p.muted ? "unmute" : "mute"}
                   </button>
-                  <button onClick={manual(() => removePart(p.name))}>✕</button>
+                  <button disabled={locked} onClick={manual(() => removePart(p.name))}>✕</button>
                 </div>
               </div>
             ))}
@@ -503,12 +561,12 @@ function Studio() {
           <div className="card">
             <h3>Manual controls</h3>
             <div className="chips">
-              <button onClick={manual(() => recordPart("drum"))}>● clap / hit</button>
-              <button onClick={manual(() => recordPart("melody"))}>● hum melody</button>
-              <button onClick={manual(() => recordPart("bass"))}>● hum bass</button>
-              <button onClick={manual(() => recordPart("texture"))}>● texture</button>
+              <button disabled={locked} onClick={manual(() => recordPart("drum"))}>● clap / hit</button>
+              <button disabled={locked} onClick={manual(() => recordPart("melody"))}>● hum melody</button>
+              <button disabled={locked} onClick={manual(() => recordPart("bass"))}>● hum bass</button>
+              <button disabled={locked} onClick={manual(() => recordPart("texture"))}>● texture</button>
               <button onClick={() => void addBacking()}>+ backing track</button>
-              <button onClick={togglePlay}>{transport === "started" ? "pause" : "play"}</button>
+              <button disabled={locked} onClick={togglePlay}>{transport === "started" ? "pause" : "play"}</button>
               <button className="primary" onClick={manual(exportSong)}>
                 export
               </button>
@@ -516,6 +574,10 @@ function Studio() {
             <label className="toggle">
               <input type="checkbox" checked={quietWhileTalking} onChange={(e) => setQuietWhileTalking(e.target.checked)} />
               Fade the music out while the producer talks
+            </label>
+            <label className="toggle">
+              <input type="checkbox" checked={muteWhilePlaying} onChange={(e) => setMuteWhilePlaying(e.target.checked)} />
+              Speakers: mute the producer's mic while music plays
             </label>
             {exported && (
               <a className="download" href={exported.url} download={`loopstack-${v?.genre ?? "track"}.wav`}>

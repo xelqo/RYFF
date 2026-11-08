@@ -23,7 +23,10 @@ def _headers() -> dict:
 
 def _post(path: str, payload: dict, timeout: float) -> bytes:
     for attempt in range(3):
-        r = httpx.post(f"{API}{path}", headers=_headers(), json=payload, timeout=timeout)
+        try:
+            r = httpx.post(f"{API}{path}", headers=_headers(), json=payload, timeout=timeout)
+        except httpx.HTTPError as e:
+            raise ElevenLabsError(f"ElevenLabs {path} request failed: {type(e).__name__}: {e}") from e
         if r.status_code == 429 and attempt < 2:  # concurrency limit: back off and retry
             time.sleep(1.5 * (attempt + 1))
             continue

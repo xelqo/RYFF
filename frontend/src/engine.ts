@@ -6,6 +6,7 @@ import { SLOTS, type Session, type Slot } from "./types";
 type Disposable = { dispose: () => unknown };
 const DRUM_NOTE = "C4"; // drum samples are mapped to MIDI 60 and always triggered at C4 (no pitch shift)
 const KIT_GAIN: Record<Slot, number> = { kick: 0, snare: -2, hat: -9, perc: -8 };
+const FALLBACK_STEPS: Record<Slot, number[]> = { kick: [0, 8], snare: [4, 12], hat: [2, 6, 10, 14], perc: [6, 14] };
 const MASTER_DB = -3;
 const DUCKED_DB = -60; // effectively silent while the producer talks
 
@@ -78,10 +79,11 @@ class Engine {
 
     // 1. Drums: the vibe's pattern, played on the kit sound or on the user's own sound for that slot.
     for (const slot of SLOTS) {
-      const steps = v.pattern[slot] ?? [];
-      if (!steps.length) continue;
       const userPart = [...s.parts].reverse().find((p) => p.kind === "drum" && p.slot === slot);
       if (userPart?.muted) continue; // muting your sound silences that drum
+      const pattern = v.pattern[slot] ?? [];
+      const steps = pattern.length || !userPart ? pattern : FALLBACK_STEPS[slot]; // your sound always gets played
+      if (!steps.length) continue;
       const url = userPart?.sample_url ?? v.kit[slot];
       const buf = url ? this.buffers.get(url) : undefined;
       if (!buf) continue;
@@ -184,10 +186,12 @@ class Engine {
       if (!buf) continue;
       const player = new Tone.Player(buf).connect(out);
       player.loop = true;
-      if (p.kind === "texture") {
-        const loopSec = (p.loop_steps ?? 32) * (60 / v.bpm / 4);
-        player.playbackRate = buf.duration / loopSec; // follows tempo changes when the vibe changes
-      }
+      const songLoop = (v.bars * 240) / v.bpm;
+      const loopSec =
+        p.kind === "texture"
+          ? (p.loop_steps ?? 32) * (60 / v.bpm / 4)
+          : Math.max(1, Math.round(buf.duration / songLoop)) * songLoop;
+      player.playbackRate = buf.duration / loopSec; // keeps the loop locked to the song's tempo
       player.volume.value = p.volume;
       player.sync().start(0);
       made.push(player);
@@ -252,6 +256,17 @@ class Engine {
     vol.rampTo(on ? DUCKED_DB : MASTER_DB, on ? 0.15 : 0.6);
   }
 
+  /** A short "go" beep for takes with no count-in. */
+  beep() {
+    const click = new Tone.Synth({
+      oscillator: { type: "square" },
+      envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.01 },
+    }).connect(this.master);
+    click.volume.value = -10;
+    this.live.push(click);
+    click.triggerAttackRelease("A5", 0.08);
+  }
+
   /** 4 count-in clicks, then the song starts on "1". Returns the AudioContext time of that downbeat. */
   playWithCountIn(s: Session, onCount: (n: number) => void): number {
     this.reset(s);
@@ -275,10 +290,8 @@ class Engine {
     return downbeat;
   }
 
-  /** Render the song offline to a WAV of at least `minSeconds` (whole loops), with a short fade-out. */
-  async exportMix(s: Session, minSeconds = 15): Promise<{ blob: Blob; seconds: number }> {
-    const loopSec = (s.vibe.bars * 240) / s.vibe.bpm;
-    const songSec = Math.max(1, Math.ceil(minSeconds / loopSec)) * loopSec;
+  /** Render the song offline to a WAV of exactly `songSec` seconds, with a short fade-out. */
+  async exportMix(s: Session, songSec = 15): Promise<{ blob: Blob; seconds: number }> {
     const rendered = await Tone.Offline(
       ({ transport }) => {
         transport.bpm.value = s.vibe.bpm;
@@ -286,11 +299,11 @@ class Engine {
         transport.swingSubdivision = "16n";
         const out = new Tone.Volume(-3).toDestination();
         out.volume.setValueAtTime(-3, Math.max(0, songSec - 1.2));
-        out.volume.linearRampToValueAtTime(-60, songSec + 0.3);
+        out.volume.linearRampToValueAtTime(-60, songSec);
         this.build(s, out, false);
         transport.start(0);
       },
-      songSec + 0.5,
+      songSec,
       2,
       44100,
     );

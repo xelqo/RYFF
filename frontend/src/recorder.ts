@@ -6,7 +6,17 @@ import * as Tone from "tone";
  */
 export const LATENCY_NUDGE_MS = 0;
 
-const BUFFER = 2048;
+const PROCESSOR = "loopstack-capture";
+const PROCESSOR_SOURCE = `
+class Capture extends AudioWorkletProcessor {
+  process(inputs) {
+    const channel = inputs[0][0];
+    if (channel) this.port.postMessage({ t: currentTime, d: channel.slice(0) });
+    return true;
+  }
+}
+registerProcessor("${PROCESSOR}", Capture);
+`;
 
 /**
  * Captures raw mic samples on Tone's own AudioContext, timestamped in that context's clock, so a take
@@ -14,8 +24,15 @@ const BUFFER = 2048;
  */
 class Mic {
   private stream: MediaStream | null = null;
+  private worklet: Promise<void> | null = null;
 
+  /** Opens the mic and loads the capture processor, so a take can start on time. */
   async init() {
+    const ctx = Tone.getContext().rawContext as unknown as AudioContext;
+    this.worklet ??= ctx.audioWorklet.addModule(
+      URL.createObjectURL(new Blob([PROCESSOR_SOURCE], { type: "text/javascript" })),
+    );
+    await this.worklet;
     if (this.stream) return;
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
@@ -25,44 +42,44 @@ class Mic {
   /** Record between two AudioContext times (seconds). Resolves once the window has passed. */
   async capture(startAt: number, endAt: number): Promise<{ samples: Float32Array; sampleRate: number }> {
     await this.init();
-    const ctx = Tone.getContext().rawContext as unknown as AudioContext;
+    const context = Tone.getContext();
+    const ctx = context.rawContext as unknown as AudioContext;
     const src = ctx.createMediaStreamSource(this.stream!);
-    const proc = ctx.createScriptProcessor(BUFFER, 1, 1);
+    const proc = context.createAudioWorkletNode(PROCESSOR, {
+      channelCount: 1,
+      channelCountMode: "explicit",
+    }) as unknown as AudioWorkletNode;
     const sink = ctx.createGain();
     sink.gain.value = 0;
     const chunks: { t: number; d: Float32Array }[] = [];
     const sr = ctx.sampleRate;
-    const bufDur = BUFFER / sr;
-    proc.onaudioprocess = (e: AudioProcessingEvent) => {
-      const t = Number.isFinite(e.playbackTime) ? e.playbackTime : ctx.currentTime + bufDur;
-      chunks.push({ t, d: new Float32Array(e.inputBuffer.getChannelData(0)) });
-    };
+    proc.port.onmessage = (e: MessageEvent<{ t: number; d: Float32Array }>) => chunks.push(e.data);
     src.connect(proc);
     proc.connect(sink);
     sink.connect(ctx.destination);
 
+    // What you hear at time T reaches the speakers late, and your clap reaches us late again.
+    const ctxAny = ctx as AudioContext & { outputLatency?: number };
+    const latency = (ctx.baseLatency || 0) + (ctxAny.outputLatency || 0) + LATENCY_NUDGE_MS / 1000;
     const giveUp = endAt + 3;
     await new Promise<void>((resolve) => {
       const check = () => {
         const last = chunks[chunks.length - 1];
-        const done = last && last.t - bufDur > endAt;
+        const done = last && last.t > endAt + latency;
         if (done || ctx.currentTime > giveUp) resolve();
         else setTimeout(check, 50);
       };
       setTimeout(check, Math.max(0, (endAt - ctx.currentTime) * 1000));
     });
-    proc.onaudioprocess = null;
+    proc.port.onmessage = null;
     src.disconnect();
     proc.disconnect();
     sink.disconnect();
 
-    // What you hear at time T reaches the speakers late, and your clap reaches us late again.
-    const ctxAny = ctx as AudioContext & { outputLatency?: number };
-    const latency = (ctx.baseLatency || 0) + (ctxAny.outputLatency || 0) + LATENCY_NUDGE_MS / 1000;
     const n = Math.max(1, Math.round((endAt - startAt) * sr));
     const out = new Float32Array(n);
     for (const c of chunks) {
-      const offset = Math.round((c.t - bufDur - (startAt + latency)) * sr);
+      const offset = Math.round((c.t - (startAt + latency)) * sr);
       for (let i = 0; i < c.d.length; i++) {
         const j = offset + i;
         if (j >= 0 && j < n) out[j] = c.d[i];
