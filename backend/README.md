@@ -28,6 +28,11 @@ a cut-out hit sample per drum part (`hit_url`). Needs `DAYTONA_API_KEY`; `LOCAL_
 script locally while developing. Uploads can be webm/ogg/mp4/wav (converted with ffmpeg). Mixing the hit into each
 version (`mix()` in `analysis.py`) is still a pass-through: Derik's next task (`sandbox/mix.py`).
 
+## Voice agent
+`create_agent.py` creates the "Loopstack producer" agent (voice Charlie, gemini-2.5-flash) and its 5 client tools
+from the prompt and first message in `docs/AGENT.md`, then writes `ELEVENLABS_AGENT_ID` to `.env`. Re-running it
+updates the same agent (it adds fresh tool copies each run; old ones can be deleted in the dashboard).
+
 ## Teammate modules
 `contrib.py` imports `vibes.py` / `words.py` (Avi) and uses built-in stand-ins until they exist. The interfaces are documented at the top of `contrib.py`. Drop your file into `backend/` and it's
 picked up on restart.
