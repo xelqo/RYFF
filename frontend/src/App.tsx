@@ -7,6 +7,7 @@ import { mic } from "./recorder";
 import { encodeWav } from "./wav";
 import Visualizer from "./Visualizer";
 import DebugPanel from "./DebugPanel";
+import RecordOverlay, { type RecState } from "./RecordOverlay";
 import { debug, fmt } from "./debug";
 import { SLOTS, type Health, type Part, type Session, type Slot } from "./types";
 
@@ -74,8 +75,8 @@ function Studio() {
   const [session, setSessionState] = useState<Session | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const [status, setStatus] = useState("");
-  const [countIn, setCountIn] = useState<number | null>(null);
   const [recording, setRecording] = useState(false);
+  const [rec, setRec] = useState<RecState>({ phase: "idle" });
   const [lines, setLines] = useState<Line[]>([]);
   const [exported, setExported] = useState<{ url: string; seconds: number } | null>(null);
   const [health, setHealth] = useState<Health | null | undefined>(undefined); // undefined = not checked yet
@@ -194,6 +195,7 @@ function Studio() {
       await Tone.start();
       if (!sessionRef.current) await setVibe("chill lo-fi");
       const s = sessionRef.current!;
+      setRec({ phase: "waiting" });
       await waitForAgentToFinish();
       setAgentMic(true); // otherwise the agent hears your clap as an interruption
       setAgentVolume(0); // and its voice can't leak into the take
@@ -203,26 +205,40 @@ function Studio() {
       let steps = HUM_STEPS;
       if (kind === "drum") {
         engine.stop(); // record the hit clean, without the beat bleeding in
-        setStatus("Wait for the beep…");
-        const beepAt = Tone.now() + 0.1;
-        engine.beep(beepAt); // the "go" cue comes from the app, not the producer
-        const start = beepAt + 0.3; // start after the beep has died away so it isn't recorded
+        setStatus("3, 2, 1… then clap");
+        // 3 beeps (the last one higher) from the app, then recording starts once they've died away
+        const t0 = Tone.now() + 0.15;
+        const gap = 0.5;
+        for (let i = 0; i < 3; i++) {
+          engine.beep(t0 + i * gap, i === 2 ? "A5" : "E5");
+          Tone.getDraw().schedule(() => setRec({ phase: "countin", n: 3 - i, kind }), t0 + i * gap);
+        }
+        const start = t0 + 2 * gap + 0.25;
         Tone.getDraw().schedule(() => {
-          setCountIn(0);
-          setStatus(`Recording for ${HIT_SECONDS} seconds: make your sound a few times`);
-        }, beepAt);
+          setRec({ phase: "recording", kind, endsAt: performance.now() + HIT_SECONDS * 1000, total: HIT_SECONDS * 1000 });
+          setStatus(`Recording for ${HIT_SECONDS} seconds: clap or tap a few times`);
+        }, start);
         take = await mic.capture(start, start + HIT_SECONDS);
       } else {
         preRoll = PRE_ROLL;
         steps = HUM_STEPS;
         engine.duck(false); // the beat must be audible while you hum along
         setStatus(beatWhileHumming ? "Count-in… then go on the 1" : "Count-in… then go on the 1 (clicks only, the beat comes back after)");
-        const downbeat = engine.playWithCountIn(s, (n) => setCountIn(n), beatWhileHumming, steps / 4);
         const recSeconds = steps * (60 / s.vibe.bpm / 4);
+        const downbeat = engine.playWithCountIn(
+          s,
+          (n) =>
+            n > 0
+              ? setRec({ phase: "countin", n, kind })
+              : setRec({ phase: "recording", kind, endsAt: performance.now() + recSeconds * 1000, total: recSeconds * 1000 }),
+          beatWhileHumming,
+          steps / 4,
+        );
         take = await mic.capture(downbeat - preRoll, downbeat + recSeconds + 0.2);
       }
+      engine.doneChime(); // audible "recording stopped"
+      setRec({ phase: "analysing" });
       setRecording(false);
-      setCountIn(null);
       setAgentMic(false);
       setAgentVolume(1);
       setStatus("Analysing your take in the Daytona sandbox…");
@@ -245,8 +261,8 @@ function Studio() {
       return `That take didn't work: ${errMsg(e)}`;
     } finally {
       busy.current = false;
+      setRec({ phase: "idle" });
       setRecording(false);
-      setCountIn(null);
       setAgentMic(false);
       setAgentVolume(1);
       setStatus("");
@@ -516,7 +532,7 @@ function Studio() {
         : `daytona: ${health.sandbox}`;
 
   return (
-    <div className="app">
+    <div className={`app ${rec.phase === "recording" ? "rec-active" : ""}`}>
       <header>
         <div className="brand">
           LOOPSTACK<span>.</span>
@@ -548,7 +564,10 @@ function Studio() {
 
       <main>
         <section className="stage">
-          <Visualizer getAgent={getAgent} analyser={engine.analyser} countIn={countIn} recording={recording} />
+          <div className="stage-viz">
+            <Visualizer getAgent={getAgent} analyser={engine.analyser} countIn={null} recording={recording} />
+            <RecordOverlay rec={rec} />
+          </div>
           <div className="status">{status || (connected ? "Say a vibe, clap, hum, or ask for changes." : " ")}</div>
           {session && (
             <button className="transport" onClick={togglePlay} disabled={recording} title="Spacebar">

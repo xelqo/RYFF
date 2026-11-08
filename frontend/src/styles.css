@@ -111,3 +111,24 @@ main { flex: 1; display: grid; grid-template-columns: 1fr 420px; min-height: 0; 
 .debug-log .info .debug-msg { color: #cfcfe0; }
 .debug-log .warn .debug-msg { color: #fbbf24; }
 .debug-log .error .debug-msg { color: #ff8080; }
+
+/* recording states */
+.stage-viz { position: relative; width: 100%; flex: 1; display: flex; min-height: 300px; }
+.stage-viz .viz-wrap { flex: 1; }
+.rec-overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; pointer-events: none; text-align: center; background: radial-gradient(circle, rgba(7,7,10,0.75) 0%, rgba(7,7,10,0.35) 60%, transparent 80%);
+}
+.rec-big { font-size: 64px; font-weight: 800; letter-spacing: 4px; line-height: 1; }
+.rec-count { font-size: 160px; font-weight: 800; line-height: 1; color: #fff; animation: rec-pop 0.45s ease-out; }
+.rec-sub { font-size: 16px; color: var(--dim); }
+.rec-dot { color: var(--rec); font-weight: 800; letter-spacing: 3px; animation: rec-blink 1s infinite; }
+.rec-overlay.waiting .rec-big { color: #fbbf24; font-size: 48px; }
+.rec-overlay.recording .rec-big { color: var(--rec); }
+.rec-overlay.analysing .rec-big { color: var(--ok); font-size: 52px; }
+.rec-bar { width: min(520px, 80%); height: 14px; border-radius: 99px; background: #2a1215; overflow: hidden; border: 1px solid #5c1d22; }
+.rec-bar-fill { height: 100%; background: var(--rec); border-radius: 99px; }
+.app.rec-active { box-shadow: inset 0 0 0 4px var(--rec); animation: rec-glow 1s infinite; }
+@keyframes rec-pop { from { transform: scale(1.5); opacity: 0.2; } to { transform: scale(1); opacity: 1; } }
+@keyframes rec-blink { 50% { opacity: 0.25; } }
+@keyframes rec-glow { 50% { box-shadow: inset 0 0 0 4px rgba(255, 90, 90, 0.35); } }

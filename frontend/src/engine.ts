@@ -226,8 +226,8 @@ class Engine {
 
   private beeper: Tone.Synth | null = null;
 
-  /** Short "go" beep (played before a drum take starts recording). */
-  beep(time: number) {
+  /** Short cue tone (countdown beeps). */
+  beep(time: number, note = "A5", velocity = 1) {
     if (!this.beeper) {
       this.beeper = new Tone.Synth({
         oscillator: { type: "sine" },
@@ -236,7 +236,14 @@ class Engine {
       this.beeper.volume.value = -6;
     }
     this.duck(false);
-    this.beeper.triggerAttackRelease("A5", 0.08, time);
+    this.beeper.triggerAttackRelease(note, 0.08, time, velocity);
+  }
+
+  /** Two falling tones: "recording stopped". */
+  doneChime() {
+    const t = Tone.now() + 0.02;
+    this.beep(t, "A5", 0.8);
+    this.beep(t + 0.13, "E5", 0.8);
   }
 
   /** Pause keeps the loop position; resume continues from the same spot. */
