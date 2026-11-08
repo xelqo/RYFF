@@ -54,6 +54,9 @@ def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_word
     layer_words = ("drum", "beat", "groove", "swing", "kick", "snare", "hat", "808", "four-on-the-floor", "bass")
     if not has_drums:
         styles = styles[:1] + [s for s in styles[1:] if not any(w in s.lower() for w in layer_words)]
+    melody_words = ("melod", "hook", "lead", "riff", "solo", "arpegg", "bell", "piano")
+    if not has_backing:   # preset styles like "catchy instrumental hooks" invite a melody the user didn't add
+        styles = styles[:1] + [s for s in styles[1:] if not any(w in s.lower() for w in melody_words)]
     pad = vibe.get("instruments", {}).get("texture") or "warm chord pad"
     lead_layers, layers, missing = [], [f"soft chords on {pad}"], []
     if has_drums:
@@ -63,7 +66,11 @@ def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_word
     if has_backing:
         lead_layers.append("bassline and melody")
     else:
-        missing += ["bass", "bassline", "808", "lead melody"]
+        # tested: with only "bass/lead melody" banned, a melody/riff still kicked in after the 3 s intro
+        missing += ["bass", "bassline", "808", "sub bass", "melody", "lead melody", "lead synth", "piano melody",
+                    "arpeggio", "riff", "hook", "solo", "topline", "countermelody"]
+        if has_drums:
+            layers += ["only chords and drums", "no melody", "minimal arrangement"]
     if not has_drums and not has_backing:
         layers += ["sparse, minimal arrangement", "chords and atmosphere only"]
 
@@ -93,12 +100,17 @@ def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_word
         keep.append("the bassline and melody keep playing")
     if new_words:
         enters = ", ".join(new_words[:2]) + (" and a bassline" if new_kind in ("melody", "bass") else "") + " enter"
+        if not has_backing:
+            enters += "; the soft chords continue unchanged; no melody, no bass, nothing else enters"
     else:
-        enters = "the groove continues" if parts else "soft chords and atmosphere only, no drums, no bass"
+        enters = ("the groove continues" + ("" if has_backing else "; no melody, no bass")) if parts \
+            else "soft chords and atmosphere only, no drums, no bass"
     main_text = "[Main]\n{" + "; ".join(keep + [enters]) + "}"
     second = {"text": main_text, "duration_ms": main, "positive_styles": positive, "negative_styles": negative}
     if prev_song_id and mode == "short":
-        second["context_adherence"] = os.environ.get("MAIN_ADHERENCE", "low")
+        # Drums: medium adherence keeps the existing chords (tested: low let a random melody kick in after the
+        # intro, medium gave stronger drums and less melodic content). Backing parts need low to come through.
+        second["context_adherence"] = "medium" if new_kind == "drums" else os.environ.get("MAIN_ADHERENCE", "low")
     return {"chunks": [first, second]}
 
 
