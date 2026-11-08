@@ -2,47 +2,38 @@
 
 Rule: **always have something demoable.** Each milestone ends with a working app, even if ugly.
 
-## Step 0: risk test (first ~2 hours, before any UI)
-The whole project depends on one question: **does a hummed melody sound good once it's turned into an instrument?**
-Test it in `spikes/` with plain Python scripts:
-1. Record a 4-bar hum at 90 BPM with a metronome (any phone voice memo works).
-2. basic-pitch → notes. Print them. Do they match what you hummed? Try librosa `pyin` too and keep the better one.
-3. Snap the notes to a 16th grid and the key.
-4. Generate ONE "sustained cello note C3, dry" with ElevenLabs SFX, then render the notes with it (pitch-shift per note,
-   or write a MIDI file and play it in GarageBand with that sample as a quick check).
-5. Same for claps: onsets → pattern → trigger a generated 808 kick. Does it groove?
+## Step 0: risk tests (first ~2–3 hours, before any UI)
+Two questions decide whether this sounds good:
+1. **Hum → melody:** record a 4-bar hum over an 80 BPM click. basic-pitch (and librosa `pyin`) → notes → snap to the
+   grid and the key → play it on ONE ElevenLabs-generated "rhodes note C4, sustained, dry" pitch-shifted per note.
+   Does it still sound like the tune you hummed?
+2. **Clap → drum:** record a few claps → cut the cleanest hit → drop it in as the snare of a lo-fi pattern with an
+   ElevenLabs kick + hat. Does it sit in the beat or sound like a random noise?
 
-**Go / no-go:** if hum → notes is too messy, simplify. Snap harder to the scale, use only longer notes, or treat hums
-as bass lines (fewer, longer notes forgive more). Decide this before building the UI.
+**Go / no-go:** if hums are messy, snap harder to the scale, merge short notes, or default hums to bass (fewer,
+longer notes). If raw claps sound bad, layer the user's clap *over* the generated snare instead of replacing it.
 
-## Milestone 1: the loop pedal (no AI yet)
-- [ ] Frontend: BPM + bars picker, metronome, count-in, record button, layer list with mute/delete
-- [ ] Tone.js transport loops every layer in sync; recorded takes trimmed to the loop and played raw
-- [ ] Works on laptop mic. **This alone is already a demo.**
+## Milestone 1: vibe → beat (no mic yet)
+- [ ] 3–4 vibe presets (lo-fi, trap, house, pop) as hand-written profiles: bpm, key, patterns, instrument prompts
+- [ ] Kits generated with ElevenLabs SFX and cached
+- [ ] Frontend: vibe picker → the beat plays on a loop with play/pause. **Already a demo.**
 
-## Milestone 2: analysis in Daytona
-- [ ] `sandbox/analyse.py` (rhythm / melody / texture / auto) → JSON
-- [ ] Daytona snapshot with deps; backend creates one sandbox per session and runs analyse on each take
-- [ ] Rhythm layers play as patterns of the user's own hit; melody layers as notes on a basic synth
+## Milestone 2: add sounds
+- [ ] Recorder (records while the beat plays, with an optional click), part cards with mute/delete/redo
+- [ ] `sandbox/analyse.py`: hit / hum / texture / auto → JSON (run it locally first)
+- [ ] Daytona snapshot with deps; backend runs analyse in a per-session sandbox
+- [ ] Hits drop into a kit slot; hums play as melody/bass on the vibe's instrument
 
-## Milestone 3: ElevenLabs sounds
-- [ ] Sound picker per layer: presets (808 kick, snare, shaker, cello, synth bass, piano, choir) + free text
-- [ ] SFX generation → sample → Tone `Sampler` / `Player`; cache by prompt
-- [ ] Text box "make the clap an 808" → maps to a layer + prompt (a simple keyword match is fine; LLM is optional)
-
-## Milestone 4: polish (what wins the room)
-- [ ] Backing track button (ElevenLabs Music at session BPM/key, stretched to the grid in the sandbox)
-- [ ] Visuals: each layer has a colour and pulses on its hits/notes (the audience must SEE the layers stacking)
-- [ ] Export mixdown → download / share link
-- [ ] Stretch: tempo from the first clap, "auto" layer type, effects agent in the sandbox
+## Milestone 3: free-text vibes + polish
+- [ ] Free-text vibe → nearest preset genre + adjusted instrument prompts (keyword match or a small LLM call)
+- [ ] Visuals: each part has a colour and pulses on its hits/notes, so the audience SEES the song stack up
+- [ ] Optional backing track (ElevenLabs Music, stretched to the grid)
+- [ ] Export mixdown
 
 ## Cut list if time runs out (in this order)
-export → backing track → free-text sounds (keep presets) → auto-detect layer type (make the user pick)
+export → backing track → free-text vibes (keep presets) → auto-detect (make the user pick drum/melody)
 
-## Who does what
-| Track | Step 0 | M1 | M2 | M3 | M4 |
-|---|---|---|---|---|---|
-| Frontend/audio | metronome+recorder prototype | owns | wire layers | sampler | visuals |
-| Backend/Daytona | hum→notes spike | API skeleton | owns | caching | export, stretch |
-| ElevenLabs/sound | SFX prompt tests | preset list | | owns | backing track |
-| Pitch/demo | write DEMO.md, record backup video early | | | | Devpost, slides |
+## Out of scope (decided)
+- Changing the vibe mid-session
+- Following the user's exact clap rhythm (the vibe owns the groove)
+- Tempo detection (the vibe sets the tempo)

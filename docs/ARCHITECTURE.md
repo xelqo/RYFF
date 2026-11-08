@@ -1,81 +1,98 @@
 # Architecture
 
-## Core idea: one shared loop
-Like a loop pedal, everything plays on one clock.
-- The session has a **BPM** (default 90), a **key** (detected from the first hum, or picked), and a **loop length**
-  (2 or 4 bars).
-- Every recording gets a **1-bar count-in plus a metronome**, so takes start on the beat. That makes analysis far
-  easier than guessing the tempo from free-form clapping. Detecting tempo from the first clap is a stretch goal.
-- The browser owns playback (Tone.js `Transport`). The server only turns raw takes into **layers**.
+## Core ideas
+1. **The vibe is chosen once, at the start, and never changes.** It decides tempo, key, groove and instruments.
+2. **User sounds are ingredients, not exact performances.** A clap gives us its *sound*; the vibe decides the rhythm.
+   A hum gives us a *tune*; the vibe decides tempo, key and instrument.
+3. **Parts can be added at any time, in any order.** Only the vibe is required.
+4. **The browser owns playback** (Tone.js `Transport` at the vibe's BPM). The server turns vibes and takes into data
+   plus sample URLs.
 
-## Data model
+## Vibe profile
+Built once from the vibe text. A lookup table of ~8 genres (lo-fi, trap, house, EDM, boom bap, pop, R&B, ambient)
+plus a small LLM call or keyword match maps free text onto it.
 ```ts
-Session {
-  id, bpm, key, bars,            // e.g. 90, "A minor", 4
-  layers: Layer[],
-  backing?: { url, prompt }      // ElevenLabs Music track, optional
-}
-
-Layer {
-  id, kind: "rhythm" | "melody" | "texture",
-  raw_url,                        // the user's original take
-  muted, volume,
-  // rhythm
-  pattern?: { step: number, velocity: number }[],   // 16th-note steps across the loop
-  // melody
-  notes?: { start_beat, dur_beats, midi, velocity }[],
-  // how it sounds
-  sound: { source: "own" | "elevenlabs", prompt?: string, sample_url: string, root_midi?: number }
+Vibe {
+  text: "chill lo-fi",
+  genre: "lofi",
+  bpm: 80, key: "A minor", bars: 4,
+  drum_pattern: { kick: number[], snare: number[], hat: number[], perc: number[] },  // 16th-note steps per bar
+  swing: 0.15,
+  instruments: {
+    kick:  "dusty lo-fi kick drum, single hit, dry",
+    snare: "soft lo-fi snare, single hit, dry",
+    hat:   "lo-fi closed hi-hat, single hit",
+    bass:  "warm muted electric bass note C2, sustained, dry",
+    lead:  "mellow rhodes electric piano note C4, sustained, dry"
+  },
+  backing_prompt?: "chill lo-fi hip hop, vinyl crackle, 80 BPM, A minor, instrumental"
 }
 ```
+The patterns per genre are hand-written templates. That's reliable and sounds right; no AI is needed for the groove.
 
-## Request flow: adding a layer
-1. **Browser** records the take with `MediaRecorder` (it knows exactly which beat recording started on) and POSTs
-   `/sessions/{id}/layers` with the audio + `kind` (or `auto`) + optional text ("make it an 808").
-2. **Backend** uploads the take to the session's **Daytona sandbox** and runs `python analyse.py take.wav --bpm 90 --bars 4`:
-   - `rhythm`: `librosa.onset.onset_detect` → times → snap to the 16th grid → `pattern`. Also slices the loudest hit
-     as the user's "own" sample.
-   - `melody`: Spotify **basic-pitch** (or librosa `pyin`) → notes → snap to the grid and the session key → `notes`.
-     If the session has no key yet, estimate it from these notes.
-   - `texture`: trim/loop-crossfade the take to exactly the loop length with ffmpeg.
-   - `auto`: classify. Pitched and sustained means melody; short transients mean rhythm.
-   - Prints JSON to stdout; the backend reads it.
-3. **Backend** gets the sound from **ElevenLabs Sound Effects** (`/v1/sound-generation`):
-   - rhythm: one-shots, e.g. "single punchy 808 kick drum hit, dry, no reverb", `duration_seconds: 0.5`
-   - melody: ONE sustained note, e.g. "single sustained cello note C3, dry, no reverb", `duration_seconds: 2`.
-     The browser pitch-shifts it per note (Tone.js `Sampler` with that note as the root).
-   - texture: `loop: true` to re-imagine the take as a loop ("rain on a window")
-   - Cache by prompt, since the same "808 kick" never needs regenerating.
-4. **Browser** gets the layer JSON + sample URLs and schedules it on the transport at the next loop start.
+## Parts
+```ts
+Session { id, vibe: Vibe, parts: Part[], backing?: { url } }
 
-## Backing track (optional "fill it out" button)
-- ElevenLabs Music (`/v1/music`) with a prompt built from the session: style text + `"90 BPM, A minor,
-  instrumental"`, `force_instrumental: true`, `music_length_ms` = loop length × N.
-- **Risk:** the generated track won't land exactly on our grid. In the sandbox, `librosa.beat.beat_track` → find the
-  first downbeat → time-stretch (rubberband / ffmpeg `atempo`) to our BPM → trim to whole bars.
-- ElevenLabs Music does **not** accept our audio as input (see APIS.md), so the user's layers steer it only through
-  BPM, key and words.
+Part {
+  id, kind: "drum" | "melody" | "bass" | "texture",
+  raw_url,                              // the user's original take
+  muted, volume,
+  // drum: the user's sound replaces (or layers on) one kit slot
+  slot?: "snare" | "kick" | "hat" | "perc",
+  sample_url?: string,                  // the cleanest hit cut from the take
+  // melody / bass
+  notes?: { start_step, dur_steps, midi, velocity }[],
+  instrument_url?: string, root_midi?: number,   // the vibe's instrument note (ElevenLabs)
+  // texture
+  loop_url?: string
+}
+```
+**Default slot for a user hit:** claps and snaps go to `snare`, low thumps to `kick`, "tss"/shakers to `hat`, and
+anything else to `perc`. Decide by spectral centroid + decay in the sandbox. The user can change the slot in the UI.
 
-## Why Daytona (how we'll pitch it)
+## Flows
+**Start session:** `POST /sessions {vibe_text}` → build the vibe profile → generate the kit and instrument notes
+with ElevenLabs SFX in parallel (cache by prompt; preset vibes are pre-generated) → the beat plays at once. The
+Daytona sandbox spins up in the background.
+
+**Add a part:** the user hits record (the beat can keep playing; a click on the vibe's tempo helps hums land in time)
+→ `POST /sessions/{id}/parts` with the audio + optional `kind` → backend uploads it to the sandbox and runs
+`python analyse.py take.wav --bpm 80 --key "A minor" --bars 4`:
+- `hit`: onset detect → cut the cleanest, loudest hit → trim the tail → normalise → `sample_url` + suggested `slot`.
+  The rhythm the user clapped is ignored (that's the "loose" part).
+- `hum`: basic-pitch (or librosa `pyin`) → notes → quantise to the 16th grid at the vibe BPM → snap to the vibe key →
+  drop notes shorter than a 16th. Mostly low notes means `bass`, otherwise `melody`.
+- `texture`: trim to the loop length and crossfade the ends with ffmpeg.
+- `auto` (default): classify. Pitched and sustained is a hum; short transients are hits; everything else is texture.
+
+The browser schedules the new part from the next loop start.
+
+**Backing track (optional button):** ElevenLabs Music with the vibe's `backing_prompt`, `force_instrumental: true`,
+`music_length_ms` = loop × N. In the sandbox: beat-track it → align the downbeat → time-stretch to the vibe BPM →
+trim to whole bars. ElevenLabs Music can't take user audio, which is fine because the vibe drives it.
+
+**Export:** render the mixdown in the sandbox (or in the browser with `Tone.Offline`) → wav/mp3.
+
+## Why Daytona
 - Analysis needs heavy dependencies (basic-pitch/TensorFlow, librosa, ffmpeg, rubberband). They live in a prebuilt
   sandbox **snapshot**, not on the web server.
-- One sandbox per jam session: isolated, warm, and it holds that session's audio files. It's deleted when the session ends.
-- Stretch goal: an "effects agent" that writes and runs its own DSP code in the sandbox for requests like "make my
-  hum sound underwater". That's arbitrary generated code, which is exactly what a sandbox is for.
+- One warm sandbox per session holds that session's audio files and is deleted when the session ends.
+- Stretch: generated DSP code for effects ("make my hum sound underwater") runs safely in the sandbox.
 
-## Backend endpoints
+## Endpoints
 ```
-POST   /sessions                        → {id, bpm, key, bars}   (starts the sandbox)
-POST   /sessions/{id}/layers            multipart: audio, kind, prompt?  → Layer
-PATCH  /sessions/{id}/layers/{lid}      {prompt?, muted?, volume?}       → Layer (new prompt = new sound)
-DELETE /sessions/{id}/layers/{lid}
-POST   /sessions/{id}/backing           {style}                          → {url}
-POST   /sessions/{id}/export            → mixdown wav/mp3 (rendered in the sandbox)
-GET    /files/{path}                    serves samples/takes
+POST   /sessions                    {vibe_text}                 → Session (vibe + kit sample URLs)
+POST   /sessions/{id}/parts         multipart: audio, kind?     → Part
+PATCH  /sessions/{id}/parts/{pid}   {slot?, kind?, muted?, volume?} → Part
+DELETE /sessions/{id}/parts/{pid}
+POST   /sessions/{id}/backing                                   → {url}
+POST   /sessions/{id}/export                                    → {url}
+GET    /files/{path}
 ```
-Session state can live in memory (a dict) during the hackathon; that's fine.
+In-memory session state is fine for the hackathon.
 
-## Latency budget (aim: under 5 s from "stop recording" to hearing the layer)
-- Upload + sandbox analysis: 1–2 s if the sandbox is already warm. **Create it when the session starts, not per layer.**
-- ElevenLabs SFX: a few seconds. Kick off generation **as soon as the user picks a sound** and in parallel with analysis.
-- While waiting, play the user's own raw take quantised to the loop so there's never silence.
+## Latency (target: under 5 s from "stop recording" to hearing the part)
+- Create the sandbox when the session starts, never per part.
+- Pre-generate the kits for preset vibes; cache every ElevenLabs result by prompt.
+- While analysis runs, show the part card as "listening…" with a waveform so the wait feels intentional.

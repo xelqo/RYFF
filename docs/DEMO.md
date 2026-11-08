@@ -2,25 +2,24 @@
 
 ## Script
 1. **Hook (10 s):** "Everyone's had a song stuck in their head with no way to get it out. Watch."
-2. **Clap (20 s):** get the AUDIENCE to clap 4 bars. It loops back instantly as a raw clap, then
-   "make it an 808" turns it into a real drum beat. *This is the moment.*
-3. **Hum (25 s):** hum a 4-bar bassline. It comes back as a synth bass locked to the beat.
-4. **Add whenever (20 s):** "tss tss" for a hi-hat, then a hummed melody turned into strings. Mute one and bring it back.
-5. **Fill it out (15 s):** type "lo-fi, chill" and the ElevenLabs backing track comes in under everything.
-6. **How it works (20 s):** one slide: mic → Daytona sandbox (rhythm + pitch analysis) → ElevenLabs (instrument
-   sounds + backing) → synced loop.
+2. **Vibe (15 s):** type "chill lo-fi". A beat starts instantly at the right tempo.
+3. **Clap (20 s):** get the AUDIENCE to clap. A few seconds later *their* clap is the snare in the beat.
+   *This is the moment.*
+4. **Hum (25 s):** pause, hum a short tune, press play. It comes back as a rhodes melody in key, on the beat.
+5. **Keep adding (20 s):** hum a low bassline; jingle some keys for a texture. Mute a part and bring it back.
+6. **How it works (20 s):** one slide: vibe → ElevenLabs kit; your sounds → Daytona sandbox (hit cutting, pitch
+   tracking) → layered loop.
 7. **Close (10 s):** "From a clap to a song in under two minutes." Play the full mix.
 
 ## Rules
-- Use a **wired mic or headphones**. Speakers feeding back into the mic will wreck the analysis.
-- Pre-warm the sandbox and pre-cache the preset sounds before going on stage.
-- **Record a backup video** of a perfect run on day 1 and update it as features land.
-- Have a pre-recorded hum and clap ready to upload if the room is too loud.
+- Use a **wired mic or headphones** so speakers don't feed back into the mic.
+- Pre-warm the sandbox and pre-generate the preset vibe kits before going on stage.
+- **Record a backup video** of a perfect run early and update it as features land.
+- Keep a pre-recorded clap and hum ready to upload if the room is too loud.
 
 ## Judging angles
-- **Sponsor use is load-bearing:** remove ElevenLabs and you only have your raw clap; remove Daytona and there's
-  nowhere to run the analysis and generated code.
-- **Who it's for:** anyone with a tune in their head and no instrument; creators who need original, copyright-safe
-  sounds.
-- **How it differs from hum-to-song apps:** you build the track **layer by layer**, live, from your own performance. It
-  doesn't take one input and hand back a generated song.
+- **Sponsor use is load-bearing:** ElevenLabs makes every instrument and the kit; Daytona runs the audio analysis.
+- **Who it's for:** anyone with a tune in their head and no instrument or music skills; creators who want original,
+  copyright-safe tracks.
+- **What's different:** it isn't text-to-song. Your own sounds are in the track, added one part at a time, whenever
+  you want.
