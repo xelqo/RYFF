@@ -57,6 +57,8 @@ export default function Visualizer(props: Props) {
    const fft=p.analyser.getValue() as Float32Array;
    for(const n of fft)music+=Math.max(0,Math.min(1,(n+85)/65));music/=Math.max(1,fft.length);
    const target=Math.min(1,Math.max(mic,voice*1.5,music));level+=(target-level)*(target>level?.65:.12);
+   canvas.closest<HTMLElement>(".stage")?.style.setProperty("--orb-scale",String(1+level*.22));
+   canvas.closest<HTMLElement>(".stage")?.style.setProperty("--audio-level",String(level));
    if(meterRef.current){meterRef.current.style.setProperty("--level",String(Math.max(.02,mic)));meterRef.current.dataset.signal=mic>.03?"true":"false";}
    const time=reduced.matches?0:now*.001;
    if(gl&&uniforms&&!gl.isContextLost()){
