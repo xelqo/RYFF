@@ -9,7 +9,8 @@ function fileName(audio: Blob, stem: string) {
   return `${stem}.${ext}`;
 }
 
-const BASE = "http://localhost:8000";
+// Backend URL: set VITE_API_BASE on Vercel (e.g. https://ryff-api.onrender.com). Defaults to the local backend.
+const BASE = ((import.meta.env.VITE_API_BASE as string | undefined) || "http://localhost:8000").replace(/\/$/, "");
 
 async function json<T>(response: Response): Promise<T> {
   if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);

@@ -1,73 +1,96 @@
-# Loopstack (working name)
+# RYFF
 
-**Drop anything, tell it what to make.** Loopstack is a voice-directed music producer. Tell the producer a vibe
-and a beat plays. It asks for more: drop a penny or clap and the song gets drums built around your real hit; hum and
-it gets a melody shaped like your hum. Every sound you add makes a new, fuller version of the song.
+**Hum, clap and talk your way to an original song.** RYFF is a producer that needs no music skills: hum a few notes
+to set the key, say the vibe out loud, then click to add drums or a backing track from your own sounds. Every sound
+you add makes a new version of the song, and **your real clap is mixed into the track**.
 
-## Track, user, finish line
+Built at the SDX Hackathon with **ElevenLabs** (music, the producer's voice, speech-to-text) and **Daytona** (all
+audio analysis and mixing, in a sandbox).
+
 - **Track:** Open
-- **User:** anyone with a beat or tune in their head and no production skills
-- **Finish line:** an exported song containing their own sound, directed by voice
-
-Built for the SDX Hackathon with **ElevenLabs** (a voice agent "producer" that runs the session + **Music**, which
-generates every version of the song) and **Daytona** (sandboxed audio analysis + mixing).
-
-## The 10-second pitch
-You don't need to play an instrument or know music words. Make a noise, and Loopstack turns how it *feels* (fast,
-punchy, soaring, low and smooth) into a part of your song.
+- **User:** anyone with a beat or tune in their head and no production skills; creators who need original, copyright-safe music
+- **Finish line:** a downloaded song that contains your own sound
 
 ## How a session goes
-A voice agent, **the producer**, talks you through it (the on-screen buttons do the same things):
-1. **Say a vibe** to the producer: "chill lo-fi", "dark trap", "summer house". Presets and on-screen buttons are the
-   backup. You can change it later by asking.
-2. **Version 1 plays:** a beat in that vibe.
-3. **The producer asks for a sound**, e.g. "Want drums? Drop a penny, clap or tap something after the beep." (Every
-   step can be skipped.)
-4. **Press record → the music pauses.** Recording only ever happens with no music playing.
-5. We analyse your sound for rough traits, describe it in words, and **regenerate the whole song** with the new
-   part, building on the previous version.
-6. **The new version plays.** Next prompt: "Hum a melody", "Hum something low for bass", "Any other sound?"
-7. Step back to any earlier version, and download the one you like.
+1. **Enter.** Click "RYFF." The producer speaks one short prompt per step and never chats.
+2. **Set the key (optional).** Click *Hum the key* and hum a few notes. Daytona detects the key (e.g. D minor);
+   every version is generated in it.
+3. **Say the vibe.** Click *Say your vibe* and say anything ("chill lo-fi for late-night studying", "dreamy synthwave").
+   *Type* also works.
+4. **Version 1** plays: chords and atmosphere only, so every sound you add is obvious.
+5. **Add drums**: click and clap, tap or drop something (or *Upload* a sound). RYFF regenerates the song with
+   drums shaped by how you clapped, then layers **your actual clap** on the beat.
+6. **Add backing track**: click and hum (or upload). Your hum's feel (high/low, rising/falling, smooth/choppy) shapes
+   the melody and bassline.
+7. **Versions** (v1 start, v2 drums, v3 backing…) sit in the dock. Click any one to play it; new sounds build on the
+   one that's playing. The orb plays and pauses. **Download** saves the current version.
 
-Your sound does two jobs. A hit like a penny or clap is mixed into the track as the real sample, so you can hear
-your own sound. Its traits (busy vs sparse, punchy vs soft, high vs low, rising vs falling) steer the generated part.
+Recording always starts with a click. The producer's voice only asks for the next input.
 
 ## How it works
 ```
- you (voice) ◄──► ElevenLabs Agent "the producer"
-                    │ client tools: set_vibe · record_sound · play_version · skip_part · download_song
-                    ▼
- vibe text ──────────────────────────────► ElevenLabs Music (v2) ──► song v1
-                                                                        │
- [paused] mic take ─► Daytona sandbox                                   │ conditioning_ref
-                      analyse.py ─► traits ─► words ─► composition plan ─► ElevenLabs Music ─► new song
-                                                                                                  │
-                      mix.py ◄────────────────────────────────────────────────────────────────────┘
-                        detects beats, places your real hit on them, normalises ─► song v2, v3 …
+ browser (RYFF UI)                      backend (FastAPI)                         services
+ ─────────────────                      ─────────────────                         ────────
+ mic → raw PCM WAV ──── POST /key ────► Daytona: analyse.py (YIN pitch) ──► key (Krumhansl)
+ spoken vibe ────────── POST /transcribe ───────────────────────────────► ElevenLabs Speech-to-Text
+ prompts ◄───────────── POST /speak ────────────────────────────────────► ElevenLabs Text-to-Speech (cached)
+ vibe ───────────────── POST /sessions ─► composition plan ─────────────► ElevenLabs Music → v1
+ clap / hum / upload ── POST /parts ───► Daytona: analyse.py
+                                           drums: onsets → cleanest hit, kick/snare/hat, busy/punchy/bright
+                                           hum:   pitch → register, contour, smoothness
+                                         traits → words → plan (+ first 3 s conditioned on the last version)
+                                                                        ───► ElevenLabs Music → new version
+                                         Daytona: mix.py (tempo + beat → your real hit on the beat) → -14 LUFS
+ polls GET /sessions/{id} ◄── new version ready → plays it
 ```
-Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · API notes: [docs/APIS.md](docs/APIS.md) ·
-Voice agent: [docs/AGENT.md](docs/AGENT.md) · Plan: [docs/PLAN.md](docs/PLAN.md) · Team: [docs/TEAM.md](docs/TEAM.md) · Demo: [docs/DEMO.md](docs/DEMO.md) ·
-Roles: [docs/ROLES.md](docs/ROLES.md)
+- **ElevenLabs Music** (`music_v2`, composition plans): each version is about 20 s, generated in about 3 s. Layers you haven't
+  added are banned (no drums/bass/melody in v1). Earlier layers are named as continuing so new ones don't wash them out.
+- **Daytona**: one warm sandbox (reused across restarts) runs `sandbox/analyse.py` and `sandbox/mix.py`.
+  User audio is never processed on the web server.
+- Details: [backend/README.md](backend/README.md) (API + internals) · [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) (demo) ·
+  [docs/APIS.md](docs/APIS.md) (ElevenLabs/Daytona notes + test results). Other files in `docs/` are planning notes
+  from earlier in the day.
 
-## Repo layout (planned)
+## Repo layout
 ```
-frontend/   React + Vite: ElevenLabs agent session + client tools, vibe picker, guided "add a sound" flow, recorder,
-            player + visualiser, version history
-backend/    FastAPI: sessions, traits → words, composition plans, ElevenLabs Music, Daytona orchestration
-sandbox/    code that runs INSIDE the Daytona sandbox (analyse.py, mix.py) + requirements
-spikes/     throwaway tests (see PLAN step 0)
-docs/
+frontend/          React + Vite + TypeScript
+  src/ryff/        the RYFF interface (Avi's design): orb, shader visuals, controls, spoken prompts
+  src/ClassicApp   previous UI with the conversational ElevenLabs agent (fallback at /?classic)
+backend/           FastAPI: sessions, versions, composition plans, ElevenLabs calls, Daytona orchestration
+  create_agent.py  creates the conversational agent used by /?classic
+sandbox/           runs INSIDE Daytona: analyse.py (hits, pitch, key notes), mix.py (beat detection + mixing)
+spikes/            Music API experiments
+docs/              demo script, API notes, planning docs
+Dockerfile         backend container (Render / Railway / Fly.io)
 ```
+
+## Run locally
+```bash
+cp .env.example .env              # ELEVENLABS_API_KEY, DAYTONA_API_KEY (agent ID optional, for /?classic)
+cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn main:app --port 8000          # needs ffmpeg on PATH
+cd ../frontend && npm install && npm run dev    # http://localhost:5173
+```
+Check `curl localhost:8000/health` → `"mode": "daytona"`. Use headphones or a wired mic. Chrome is the safest browser.
+
+## Deploy
+**Frontend → Vercel.** New Project → import this repo → **Root Directory: `frontend`** (Vite is detected;
+`frontend/vercel.json` is included). Add the environment variable **`VITE_API_BASE`** = your backend's HTTPS URL, then
+deploy. The frontend holds **no secrets**.
+
+**Backend → a long-running host, not Vercel.** It keeps sessions in memory, generates in the background, serves
+audio files from disk, needs ffmpeg and a warm Daytona connection; Vercel's serverless functions can't do that.
+- **Render / Railway / Fly.io:** deploy the repo with the root `Dockerfile`, **one instance**, and set the env vars
+  `ELEVENLABS_API_KEY`, `DAYTONA_API_KEY` (optional: `DAYTONA_SANDBOX_ID`, `PRODUCER_VOICE_ID`). Use its HTTPS URL as `VITE_API_BASE`.
+- **Quickest for a demo:** run the backend on a laptop and expose it with `cloudflared tunnel --url http://localhost:8000`
+  (or ngrok), then use that HTTPS URL as `VITE_API_BASE`.
+
+**Keys can change any time:** they only live in the backend's environment. Update them on the host and restart; no
+code changes or frontend redeploy needed. Changing the backend URL means updating `VITE_API_BASE` and redeploying the
+frontend (Vite bakes it in at build time).
+
+**Before sharing a public link:** the API has no login, so anyone with the URL spends your ElevenLabs credits.
+Keep the link private, or add a simple access check.
 
 ## Team
-Lucas (frontend) · Derik (analysis + Daytona) · Alex (backend + ElevenLabs) · Avi (sound design + demo).
-Roles and agent briefs: [docs/ROLES.md](docs/ROLES.md).
-
-## Setup
-```bash
-cp .env.example .env          # fill in ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID and DAYTONA_API_KEY
-cd backend && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-cd frontend && npm install && npm run dev
-```
-Demo from a laptop on localhost, where the mic works without HTTPS. Use headphones.
+Alex (backend + ElevenLabs) · Derik (Daytona analysis + mixing) · Lucas (frontend + recording) · Avi (RYFF design + sound design)
