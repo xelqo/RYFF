@@ -52,5 +52,21 @@ export function usePlayer() {
 
   const currentUrl = useCallback(() => audioRef.current?.src ?? null, []);
 
-  return { play, pause, resume, playing, current, analyser, currentUrl };
+  // music volume (ducked under the producer's voice)
+  const setVolume = useCallback((v: number) => {
+    if (audioRef.current) audioRef.current.volume = Math.max(0, Math.min(1, v));
+  }, []);
+
+  // dB spectrum of the music, the same shape as Tone.Analyser("fft").getValue()
+  const fftBuf = useRef<Float32Array>(new Float32Array(64).fill(-120));
+  const getFft = useCallback(() => {
+    const node = analyser;
+    if (node) {
+      if (fftBuf.current.length !== node.frequencyBinCount) fftBuf.current = new Float32Array(node.frequencyBinCount);
+      node.getFloatFrequencyData(fftBuf.current as Float32Array<ArrayBuffer>);
+    }
+    return fftBuf.current;
+  }, [analyser]);
+
+  return { play, pause, resume, playing, current, analyser, currentUrl, setVolume, getFft };
 }

@@ -44,6 +44,7 @@ export function useRecorder() {
   const [recording, setRecording] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const stopRef = useRef<(() => void) | null>(null);
+  const levelRef = useRef(0);             // live mic level 0..1 for the orb
 
   const record = useCallback(async (seconds: number = TAKE_SECONDS) => {
     setRecording(true);
@@ -75,7 +76,13 @@ export function useRecorder() {
       const silent = ctx.createGain();
       silent.gain.value = 0; // keeps the graph running without playing the mic back
       const chunks: Float32Array[] = [];
-      processor.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      processor.onaudioprocess = (e) => {
+        const data = e.inputBuffer.getChannelData(0);
+        chunks.push(new Float32Array(data));
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 4) sum += data[i] * data[i];
+        levelRef.current = Math.min(1, Math.sqrt(sum / (data.length / 4)) * 6);
+      };
       source.connect(processor);
       processor.connect(silent);
       silent.connect(ctx.destination);
@@ -112,6 +119,7 @@ export function useRecorder() {
       stream?.getTracks().forEach((t) => t.stop());
       void ctx.close();
       stopRef.current = null;
+      levelRef.current = 0;
       setSecondsLeft(0);
       setRecording(false);
     }
@@ -119,5 +127,7 @@ export function useRecorder() {
 
   const stop = useCallback(() => stopRef.current?.(), []);
 
-  return { recording, secondsLeft, record, stop };
+  const getLevel = useCallback(() => levelRef.current, []);
+
+  return { recording, secondsLeft, record, stop, getLevel };
 }

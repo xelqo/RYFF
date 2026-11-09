@@ -53,6 +53,7 @@ export interface Api {
   getSession(sessionId: string): Promise<Session>;
   agentToken(): Promise<string | null>;
   transcribe(audio: Blob): Promise<string>;
+  speak(text: string): Promise<string>;
   detectKey(audio: Blob): Promise<{ key?: string; error?: string }>;
   fileUrl(path: string): string;
 }

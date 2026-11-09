@@ -69,6 +69,13 @@ export const realApi: Api = {
     return json(await fetch(`${BASE}/key`, { method: "POST", body: form }));
   },
 
+  async speak(text) {
+    const body = await json<{ url: string }>(
+      await fetch(`${BASE}/speak`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }),
+    );
+    return realApi.fileUrl(body.url);
+  },
+
   async transcribe(audio) {
     const form = new FormData();
     form.append("audio", audio, fileName(audio, "vibe"));

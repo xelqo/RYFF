@@ -215,6 +215,32 @@ def read_session(sid: str):
     return out
 
 
+class SpeakIn(BaseModel):
+    text: str
+
+
+@app.post("/speak")
+def speak(body: SpeakIn):
+    """Short spoken prompt from the producer (ElevenLabs TTS), cached by text so repeats are instant."""
+    import hashlib
+    text = body.text.strip()[:300]
+    if not text:
+        raise HTTPException(400, "empty text")
+    voice = os.environ.get("PRODUCER_VOICE_ID", "IKne3meq5aSn9XLyUdCD")       # Charlie
+    folder = DATA / "_tts"
+    folder.mkdir(exist_ok=True)
+    path = folder / (hashlib.sha1(f"{voice}:{text}".encode()).hexdigest()[:16] + ".mp3")
+    if not path.exists() or path.stat().st_size < 1000:
+        r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{voice}",
+                          params={"output_format": "mp3_44100_128"},
+                          headers={"xi-api-key": os.environ.get("ELEVENLABS_API_KEY", "")},
+                          json={"text": text, "model_id": os.environ.get("TTS_MODEL", "eleven_flash_v2_5")}, timeout=30)
+        if not r.ok:
+            raise HTTPException(502, f"text-to-speech {r.status_code}: {r.text[:200]}")
+        path.write_bytes(r.content)
+    return {"url": url_for(path)}
+
+
 @app.post("/key")
 def detect_key(audio: UploadFile = File(...)):
     """Starter hum → key (e.g. "D minor"), analysed in the Daytona sandbox."""

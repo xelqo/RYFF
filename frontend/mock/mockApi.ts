@@ -96,6 +96,10 @@ export const mockApi: Api = {
     return { key: "A minor" };
   },
 
+  async speak() {
+    return "";
+  },
+
   async transcribe() {
     return "chill lo-fi";
   },
