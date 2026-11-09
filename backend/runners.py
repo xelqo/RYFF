@@ -68,6 +68,7 @@ class DaytonaRunner:
                 if getattr(r, "exit_code", 1) != 0:
                     raise AnalysisError(f"numpy install failed: {(getattr(r, 'result', '') or '')[-300:]}")
             self.status = "ready"
+            threading.Thread(target=self._keepalive, daemon=True).start()
             log.info("Daytona sandbox ready: %s", getattr(self.sandbox, "id", "?"))
         except Exception as e:  # keep the server up; /api/health shows the error
             log.exception("Daytona startup failed")
@@ -120,16 +121,54 @@ class DaytonaRunner:
             log.warning("Using default sandbox params (%s)", e)
             return self.daytona.create()
 
-    def _exec(self, cmd: str, timeout: int = 120):
+    def _exec(self, cmd: str, timeout: int = 60):
         return self.sandbox.process.exec(cmd, timeout=timeout)
+
+    def ensure_awake(self):
+        """Daytona auto-stops idle sandboxes (30 min). A stopped sandbox makes every call hang until it times
+        out, so check the real state and start it again before using it."""
+        if self.sandbox is None:
+            return
+        try:
+            self.sandbox.refresh_data()
+        except Exception as e:
+            log.warning("Couldn't refresh sandbox state (%s)", e)
+        state = str(getattr(self.sandbox, "state", "")).lower()
+        if "started" not in state:
+            log.info("Sandbox %s is %s; starting it", self.sandbox.id, state or "unknown")
+            self.sandbox.start(timeout=90)
+
+    def _keepalive(self):
+        """Ping every 10 minutes so the sandbox never idles into auto-stop while the server runs."""
+        import time
+        while True:
+            time.sleep(600)
+            try:
+                with self._lock:
+                    self.ensure_awake()
+                    self._exec("true", timeout=30)
+            except Exception as e:
+                log.warning("Sandbox keep-alive failed (%s)", e)
 
     def run(self, wav: bytes, args: list[str]) -> tuple[dict, dict]:
         if not self._ready.wait(timeout=120):
             raise AnalysisError("The Daytona sandbox is still starting. Try again in a few seconds.")
         if self.status != "ready":
             raise AnalysisError(f"Daytona sandbox unavailable: {self.error}")
+        try:
+            return self._run_once(wav, args)
+        except AnalysisError:
+            raise
+        except Exception as e:                  # stopped/hung sandbox: wake it and retry once
+            log.warning("Sandbox call failed (%s); waking it and retrying", e)
+            with self._lock:
+                self.ensure_awake()
+            return self._run_once(wav, args)
+
+    def _run_once(self, wav: bytes, args: list[str]) -> tuple[dict, dict]:
         job = f"{REMOTE}/jobs/{uuid.uuid4().hex[:8]}"
         with self._lock:
+            self.ensure_awake()
             self._exec(f"mkdir -p {job}")
             self.sandbox.fs.upload_file(wav, f"{job}/take.wav")
             cmd = " ".join(shlex.quote(a) for a in

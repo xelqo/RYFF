@@ -47,8 +47,10 @@ export default function RyffApp() {
     async (version) => {
       try {
         await player.play(api.fileUrl(version.url), version.n);
-      } catch {
-        setError(`v${version.n} is ready. Tap the orb to play it.`);
+        setError(null);
+      } catch (e) {
+        // AbortError = playback was interrupted on purpose (e.g. the user started recording); not an error
+        if ((e as Error)?.name !== "AbortError") setError(`v${version.n} is ready. Tap the orb to play it.`);
       }
       if (version.n === 1) say("parts");
     },
@@ -148,8 +150,9 @@ export default function RyffApp() {
   const playVersion = async (v: Version) => {
     try {
       await player.play(api.fileUrl(v.url), v.n);
+      setError(null);
     } catch (e) {
-      setError(String(e));
+      if ((e as Error)?.name !== "AbortError") setError(String(e));
     }
   };
 

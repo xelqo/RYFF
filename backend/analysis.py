@@ -200,6 +200,7 @@ class AnalysisRunner:
             d = runners.DAYTONA
             job = f"{runners.REMOTE}/mix/{uuid.uuid4().hex[:8]}"
             with d._lock:
+                d.ensure_awake()
                 d._exec(f"mkdir -p {job}")
                 d.sandbox.fs.upload_file(MIX_SCRIPT.read_bytes(), f"{job}/mix.py")
                 d.sandbox.fs.upload_file(Path(song_wav).read_bytes(), f"{job}/song.wav")
