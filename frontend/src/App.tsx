@@ -88,6 +88,7 @@ function Studio() {
   const [quietWhileTalking, setQuietWhileTalking] = useState(true);
   const [beatWhileHumming, setBeatWhileHumming] = useState(false); // full beat during hums: headphones only
   const [debugOpen, setDebugOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true); // studio controls panel (like the derrick branch)
   const [errorCount, setErrorCount] = useState(0);
   const [micPermission, setMicPermission] = useState("unknown");
   const busy = useRef(false);
@@ -530,6 +531,17 @@ function Studio() {
   }
 
   const countIn = rec.phase === "countin" ? rec.n : rec.phase === "recording" ? 0 : null;
+  const manualAction = (fn: () => Promise<string>) => () => void safe(fn);
+  const v = session?.vibe;
+  const sandboxLabel =
+    health === undefined
+      ? "connecting…"
+      : !health
+        ? "backend offline"
+        : health.mode === "local"
+          ? "local analysis (dev only)"
+          : `daytona: ${health.sandbox}`;
+
   const orbState = countIn !== null && countIn > 0 ? `Count in · ${countIn}`
     : rec.phase === "waiting" ? "Get ready" : rec.phase === "recording" ? "Recording" : status ? "Processing" : connecting ? "Connecting"
     : connected ? conversation.isSpeaking ? "Speaking" : "Listening" : "Click to talk";
@@ -551,7 +563,7 @@ function Studio() {
             {error && <button className="orb-error" onClick={() => setError(null)}>{error}</button>}
             {exported && <a className="orb-download" href={exported.url} download={`ryff-${session?.vibe.genre ?? "track"}.wav`}>Download track ↓</a>}
           </div>
-          {session && session.parts.length > 0 && (
+          {session && session.parts.length > 0 && !(entered && panelOpen) && (
             <div className="parts-dock" aria-label="Parts in your song">
               {session.parts.map((p) => (
                 <div key={p.id} id={`pulse-${p.id}`} className={`part-pill ${p.kind} ${p.muted ? "off" : "on"}`}>
@@ -575,6 +587,125 @@ function Studio() {
             </div>
           )}
         </section>
+
+        {entered && (
+          <header className="studio-bar">
+            <div className="brand">RYFF<span>.</span></div>
+            <div className="vibe-info">{v ? `${v.label} · ${v.bpm} BPM · ${v.key}` : "no vibe yet"}</div>
+            <div className={`pill ${health?.mode === "daytona" && health.sandbox === "ready" ? "ok" : "warn"}`} title={health?.sandbox_error ?? ""}>
+              {sandboxLabel}
+            </div>
+            {session && (
+              <button onClick={togglePlay} disabled={recording} title="Spacebar">
+                {transport === "started" ? "❚❚ pause" : "▶ play"}
+              </button>
+            )}
+            <button
+              className={`logs ${errorCount ? "has-errors" : ""}`}
+              onClick={() => {
+                setDebugOpen((o) => !o);
+                setErrorCount(0);
+              }}
+              title="Error terminal (`)"
+            >
+              logs{errorCount ? ` · ${errorCount}` : ""}
+            </button>
+            <button className={`panel-toggle ${panelOpen ? "on" : ""}`} onClick={() => setPanelOpen((o) => !o)}>
+              {panelOpen ? "hide controls" : "controls"}
+            </button>
+          </header>
+        )}
+
+        {entered && panelOpen && (
+          <aside className="studio-panel">
+            <div className="card">
+              <h3>Vibe</h3>
+              <div className="chips">
+                {PRESETS.map((pr) => (
+                  <button key={pr} disabled={recording} onClick={manualAction(() => setVibe(pr))}>
+                    {pr}
+                  </button>
+                ))}
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (vibeInput.trim()) void safe(() => setVibe(vibeInput));
+                }}
+              >
+                <input value={vibeInput} onChange={(e) => setVibeInput(e.target.value)} placeholder='or type one: "rainy lo-fi", "like Daft Punk"' />
+              </form>
+            </div>
+
+            <div className="card">
+              <h3>Parts</h3>
+              {!session?.parts.length && <p className="muted">Clap, hum or make any sound to add a part.</p>}
+              {session?.parts.map((p) => (
+                <div key={p.id} className={`part-row ${p.kind} ${p.muted ? "off" : "on"}`}>
+                  <button
+                    className="part-toggle"
+                    role="switch"
+                    aria-checked={!p.muted}
+                    disabled={recording}
+                    onClick={() => void safe(() => patchPart(p.name, { muted: !p.muted }, p.muted ? "Turned on" : "Turned off"))}
+                  >
+                    <span className="switch"><span className="knob" /></span>
+                    <span className="part-name">{p.name}</span>
+                    <span className="part-kind">
+                      {p.kind}
+                      {p.notes ? ` · ${p.notes.length} notes` : ""}
+                    </span>
+                  </button>
+                  {p.kind === "drum" && (
+                    <select value={p.slot} disabled={recording} onChange={(e) => void safe(() => patchPart(p.name, { slot: e.target.value }, "Moved"))}>
+                      {SLOTS.map((sl) => (
+                        <option key={sl}>{sl}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button className="part-x" aria-label={`Remove ${p.name}`} disabled={recording} onClick={() => void safe(() => removePart(p.name))}>
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="card">
+              <h3>Manual controls</h3>
+              <div className="chips">
+                <button disabled={recording} onClick={manualAction(() => recordPart("drum"))}>● clap / hit</button>
+                <button disabled={recording} onClick={manualAction(() => recordPart("melody"))}>● hum melody</button>
+                <button disabled={recording} onClick={manualAction(() => recordPart("bass"))}>● hum bass</button>
+                <button disabled={recording} onClick={manualAction(() => recordPart("texture"))}>● texture</button>
+                <button disabled={recording} onClick={() => void addBacking()}>+ backing track</button>
+                <button disabled={recording || !session} onClick={togglePlay}>{transport === "started" ? "pause" : "play"}</button>
+                <button className="primary" disabled={recording} onClick={manualAction(exportSong)}>export</button>
+              </div>
+              {exported && (
+                <a className="download" href={exported.url} download={`ryff-${v?.genre ?? "track"}.wav`}>
+                  ⬇ Download your {Math.round(exported.seconds)}-second track
+                </a>
+              )}
+              <label className="toggle">
+                <input type="checkbox" checked={quietWhileTalking} onChange={(e) => setQuietWhileTalking(e.target.checked)} />
+                Fade the music out while the producer talks
+              </label>
+              <label className="toggle">
+                <input type="checkbox" checked={beatWhileHumming} onChange={(e) => setBeatWhileHumming(e.target.checked)} />
+                Full beat while humming (headphones only)
+              </label>
+            </div>
+
+            <div className="card transcript">
+              <h3>Session</h3>
+              {lines.map((l, i) => (
+                <p key={i} className={l.who}>
+                  <b>{l.who}</b> {l.text}
+                </p>
+              ))}
+            </div>
+          </aside>
+        )}
       </main>
       <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)}
         env={`mic permission: ${micPermission} · secure context: ${window.isSecureContext} · audio: ${Tone.getContext().state} ${Tone.getContext().sampleRate} Hz · backend: ${health ? `${health.mode}, sandbox ${health.sandbox}` : "offline"} · producer: ${conversation.status}`} />
