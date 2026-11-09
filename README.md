@@ -74,9 +74,10 @@ cd ../frontend && npm install && npm run dev    # http://localhost:5173
 Check `curl localhost:8000/health` → `"mode": "daytona"`. Use headphones or a wired mic. Chrome is the safest browser.
 
 ## Deploy
-**Frontend → Vercel.** New Project → import this repo → **Root Directory: `frontend`** (Vite is detected;
-`frontend/vercel.json` is included). Add the environment variable **`VITE_API_BASE`** = your backend's HTTPS URL, then
-deploy. The frontend holds **no secrets**.
+**Frontend → Vercel.** New Project → import this repo (keep the root directory as the repo root). The root
+`vercel.json` defines one public service, `frontend` (Vite, in `frontend/`), served at `/`. The backend is deliberately
+not a Vercel service, so no bindings are needed: the browser calls the backend directly. Add the environment
+variable **`VITE_API_BASE`** = your backend's HTTPS URL (Production + Preview), then deploy. The frontend holds **no secrets**.
 
 **Backend → a long-running host, not Vercel.** It keeps sessions in memory, generates in the background, serves
 audio files from disk, needs ffmpeg and a warm Daytona connection; Vercel's serverless functions can't do that.
