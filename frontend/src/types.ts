@@ -35,6 +35,7 @@ export interface Vibe {
 }
 
 export interface Session {
+  length_ms?: number;
   id: string;
   vibe: Vibe;
   parts: Part[];
@@ -49,6 +50,7 @@ export type AddPartResult = { part: Part; status: "building" } | { error: string
 export interface Api {
   createSession(vibeText: string, key?: string): Promise<Session>;
   changeVibe(sessionId: string, vibeText: string): Promise<{ status: "building" }>;
+  setLength(sessionId: string, seconds: number): Promise<{ status: "building" }>;
   addPart(sessionId: string, audio: Blob, kind: PartKind, fromVersion?: number): Promise<AddPartResult>;
   getSession(sessionId: string): Promise<Session>;
   agentToken(): Promise<string | null>;

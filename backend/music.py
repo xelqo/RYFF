@@ -9,6 +9,7 @@ import requests
 
 log = logging.getLogger("loopstack")
 URL = "https://api.elevenlabs.io/v1/music"
+DEFAULT_MS = 40000  # default version length (was 20 s); override with VERSION_MS or per session
 
 
 def _env_int(name: str, default: int) -> int:
@@ -18,7 +19,8 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_words: list[str] | None) -> dict:
+def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_words: list[str] | None,
+               total_ms: int | None = None) -> dict:
     """vibe + every part's words → v2 composition plan.
 
     prev_song_id: condition the first chunk on the previous version (None for v1 and vibe changes).
@@ -32,7 +34,8 @@ def build_plan(vibe: dict, parts: list[dict], prev_song_id: str | None, new_word
     mode = os.environ.get("CONDITION_MODE", "short")
     if mode == "none":
         prev_song_id = None
-    total = _env_int("VERSION_MS", 20000)
+    # length of the whole version; ElevenLabs caps one chunk at 120 s, so keep the total within that
+    total = max(10000, min(120000, int(total_ms) if total_ms else _env_int("VERSION_MS", DEFAULT_MS)))
     if prev_song_id and mode == "short":
         intro = _env_int("COND_INTRO_MS", 3000)
     else:

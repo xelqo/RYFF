@@ -43,7 +43,7 @@ Recording always starts with a click. The producer's voice only asks for the nex
                                          Daytona: mix.py (tempo + beat → your real hit on the beat) → -14 LUFS
  polls GET /sessions/{id} ◄── new version ready → plays it
 ```
-- **ElevenLabs Music** (`music_v2`, composition plans): each version is about 20 s, generated in about 3 s. Layers you haven't
+- **ElevenLabs Music** (`music_v2`, composition plans): each version is 40 s by default (20/40/60/90 s with the Length button), generated in a few seconds. Layers you haven't
   added are banned (no drums/bass/melody in v1). Earlier layers are named as continuing so new ones don't wash them out.
 - **Daytona**: one warm sandbox (reused across restarts) runs `sandbox/analyse.py` and `sandbox/mix.py`.
   User audio is never processed on the web server.

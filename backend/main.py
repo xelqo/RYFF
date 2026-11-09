@@ -92,7 +92,7 @@ def build_version(sid: str, reason: str, new_words: list[str] | None, from_versi
             if condition and s["versions"]:
                 base = next((v for v in s["versions"] if v["n"] == from_version), None) if from_version else None
                 prev = (base or s["versions"][-1]).get("song_id")
-            plan = music.build_plan(s["vibe"], s["parts"], prev, new_words)
+            plan = music.build_plan(s["vibe"], s["parts"], prev, new_words, s.get("length_ms"))
             n = len(s["versions"]) + 1
             folder = DATA / sid
             raw = folder / f"v{n}.raw.mp3"
@@ -101,7 +101,9 @@ def build_version(sid: str, reason: str, new_words: list[str] | None, from_versi
             name = s["vibe"]["name"]
             is_preset = n == 1 and not s["vibe"].get("key") and s["vibe"]["text"].lower().strip() in PRESET_TEXT.get(name, [])
             use_cache = is_preset and os.environ.get("USE_CACHE", "1") == "1"
-            cached_mp3, cached_id = CACHE / f"{name}.bare.mp3", CACHE / f"{name}.bare.song_id"   # "bare" = no drums/bass v1
+            secs = (s.get("length_ms") or 20000) // 1000
+            stem = f"{name}.bare" if secs == 20 else f"{name}.bare.{secs}s"   # "bare" = no drums/bass v1; one per length
+            cached_mp3, cached_id = CACHE / f"{stem}.mp3", CACHE / f"{stem}.song_id"
             if use_cache and cached_mp3.exists() and cached_mp3.stat().st_size > 20000:
                 raw.write_bytes(cached_mp3.read_bytes())
                 song_id = cached_id.read_text().strip() or None if cached_id.exists() else None
@@ -138,6 +140,16 @@ PRESET_TEXT = {"lofi": ["chill lo-fi", "lo-fi", "lofi"], "trap": ["dark trap", "
 class VibeIn(BaseModel):
     vibe_text: str
     key: str | None = None          # e.g. "D minor", from POST /key (the user's starter hum)
+    length_s: int | None = None     # length of each version in seconds (10-120)
+
+
+class LengthIn(BaseModel):
+    seconds: int
+
+
+def length_ms(seconds: int | None) -> int:
+    default = int(os.environ.get("VERSION_MS", music.DEFAULT_MS))
+    return max(10000, min(120000, int(seconds) * 1000)) if seconds else default
 
 
 @app.get("/health")
@@ -154,7 +166,7 @@ def create_session(body: VibeIn, bg: BackgroundTasks):
     vibe = make_vibe(body.vibe_text)
     if body.key:
         vibe["key"] = body.key
-    s = {"id": sid, "vibe": vibe, "parts": [], "versions": [],
+    s = {"id": sid, "vibe": vibe, "parts": [], "versions": [], "length_ms": length_ms(body.length_s),
          "seed": random.randint(1, 2**31 - 1), "status": "building", "error": None}
     SESSIONS[sid], LOCKS[sid] = s, threading.Lock()
     threading.Thread(target=runner.start, args=(sid,), daemon=True).start()   # warm the sandbox
@@ -174,6 +186,16 @@ def change_vibe(sid: str, body: VibeIn, bg: BackgroundTasks):
         p["words"] = traits_to_words(p["kind"], p["traits"], s["vibe"])
     bg.add_task(build_version, sid, "vibe", None, None, False)
     return {"status": "building", "vibe": s["vibe"]}
+
+
+@app.patch("/sessions/{sid}/length")
+def change_length(sid: str, body: LengthIn, bg: BackgroundTasks):
+    """Make the song longer/shorter: regenerates the current version at the new length, keeping its feel."""
+    s = get_session(sid)
+    s["length_ms"], s["status"] = length_ms(body.seconds), "building"
+    secs = s["length_ms"] // 1000
+    bg.add_task(build_version, sid, f"{secs}s long", None, None, True)
+    return {"status": "building", "length_s": secs}
 
 
 @app.post("/sessions/{sid}/parts")

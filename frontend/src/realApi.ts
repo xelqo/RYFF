@@ -38,6 +38,16 @@ export const realApi: Api = {
     );
   },
 
+  async setLength(sessionId, seconds) {
+    return json(
+      await fetch(`${BASE}/sessions/${sessionId}/length`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seconds }),
+      }),
+    );
+  },
+
   async addPart(sessionId, audio, kind, fromVersion) {
     const form = new FormData();
     form.append("audio", audio, fileName(audio, "take"));

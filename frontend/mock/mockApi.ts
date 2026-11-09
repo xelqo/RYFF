@@ -62,6 +62,13 @@ export const mockApi: Api = {
     return clone(created);
   },
 
+  async setLength(sessionId) {
+    await wait(300);
+    if (!session || session.id !== sessionId) throw new Error("no session");
+    scheduleVersion();
+    return { status: "building" };
+  },
+
   async changeVibe(sessionId, vibeText) {
     await wait(300);
     if (!session || session.id !== sessionId) throw new Error("no session");

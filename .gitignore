@@ -7,3 +7,5 @@ spikes/out/
 backend/data/
 spikes/out/
 backend/cache/
+# generated audio from older builds (cache + recorded takes): never commit
+backend/files/

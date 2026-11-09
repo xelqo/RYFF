@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useLoopstack } from "../useLoopstack";
 import { usePlayer } from "../usePlayer";
@@ -168,6 +168,40 @@ export default function RyffApp() {
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   };
 
+  const LENGTHS = [20, 40, 60, 90];
+  const lengthS = Math.round((session?.length_ms ?? 40000) / 1000);
+  const nextLength = LENGTHS[(LENGTHS.indexOf(lengthS) + 1) % LENGTHS.length] ?? 40;
+
+  const togglePlay = () => {
+    if (recorder.recording || player.current === null) return;
+    if (player.playing) player.pause();
+    else void player.resume();
+  };
+
+  const changeLength = async () => {
+    const current = loop.sessionRef.current;
+    if (!current || busy) return;
+    setError(null);
+    try {
+      await api.setLength(current.id, nextLength);
+      loop.watch(`Making it ${nextLength} s long`);
+    } catch (e) {
+      setError(String((e as Error).message ?? e));
+    }
+  };
+
+  // Spacebar = play/pause (unless you're typing)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (e.code !== "Space" || tag === "INPUT" || tag === "TEXTAREA" || step !== "studio") return;
+      e.preventDefault();
+      togglePlay();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   const orbClick = () => {
     if (step === "welcome") return enter();
     if (step === "studio" && !busy && player.current !== null) {
@@ -266,6 +300,16 @@ export default function RyffApp() {
                       <span className="dot" /> {listening === "vibe" ? "Listening…" : step === "vibe" ? "Say your vibe" : "New vibe"}
                     </button>
                     <button className="glass" onClick={() => setTyping((v) => !v)} disabled={busy}>{typing ? "Close" : "Type"}</button>
+                    {step === "studio" && player.current !== null && (
+                      <button className="glass" onClick={togglePlay} disabled={recorder.recording} title="Spacebar">
+                        {player.playing ? "❚❚ Pause" : "▶ Play"}
+                      </button>
+                    )}
+                    {step === "studio" && session && (
+                      <button className="glass" onClick={changeLength} disabled={busy} title="Regenerates this version at the new length">
+                        Length {lengthS}s → {nextLength}s
+                      </button>
+                    )}
                     {step === "studio" && player.current !== null && (
                       <button className="glass" onClick={download}>Download ↓</button>
                     )}

@@ -41,5 +41,5 @@ updates the same agent (it adds fresh tool copies each run; old ones can be dele
 picked up on restart.
 
 ## Tuning (`.env`)
-`VERSION_MS` (default 20000), `MUSIC_MODEL` (music_v2), `CONDITION_STRENGTH` (high), `SONG_ID_HEADER`
+`VERSION_MS` (default 40000; the app can change it per session), `MUSIC_MODEL` (music_v2), `CONDITION_STRENGTH` (high), `SONG_ID_HEADER`
 (set once step 0 finds it), `USE_CACHE=1` (preset v1 saved to and served from `backend/cache/`).
