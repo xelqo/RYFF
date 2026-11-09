@@ -76,8 +76,8 @@ Check `curl localhost:8000/health` → `"mode": "daytona"`. Use headphones or a 
 ## Deploy
 **Frontend → Vercel.** New Project → import this repo (keep the root directory as the repo root). The root
 `vercel.json` defines one public service, `frontend` (Vite, in `frontend/`), served at `/`. The backend is deliberately
-not a Vercel service, so no bindings are needed: the browser calls the backend directly. Add the environment
-variable **`VITE_API_BASE`** = your backend's HTTPS URL (Production + Preview), then deploy. The frontend holds **no secrets**.
+not a Vercel service, so no bindings are needed: the browser calls the backend directly. The backend URL lives in
+**`frontend/.env.production`** (`VITE_API_URL`, committed: it isn't a secret). Change it there and push; no Vercel settings needed. The frontend holds **no secrets**.
 
 **Backend → a long-running host, not Vercel.** It keeps sessions in memory, generates in the background, serves
 audio files from disk, needs ffmpeg and a warm Daytona connection; Vercel's serverless functions can't do that.
@@ -89,8 +89,7 @@ audio files from disk, needs ffmpeg and a warm Daytona connection; Vercel's serv
   (or ngrok), then use that HTTPS URL as `VITE_API_BASE`.
 
 **Keys can change any time:** they only live in the backend's environment. Update them on the host and restart; no
-code changes or frontend redeploy needed. Changing the backend URL means updating `VITE_API_BASE` and redeploying the
-frontend (Vite bakes it in at build time).
+code changes or frontend redeploy needed. Changing the backend URL means editing `frontend/.env.production` and pushing (Vite bakes it in at build time).
 
 **Before sharing a public link:** the API has no login, so anyone with the URL spends your ElevenLabs credits.
 Keep the link private, or add a simple access check.
