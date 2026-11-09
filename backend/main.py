@@ -214,6 +214,8 @@ def add_part(sid: str, bg: BackgroundTasks, audio: UploadFile = File(...), kind:
     except TypeError:                      # stub runner takes no bpm
         traits = runner.analyse(str(raw), kind)
     if traits.get("error"):
+        log.warning("session %s: %s take rejected: %s (%d bytes, %s)", sid, kind, traits["error"],
+                    raw.stat().st_size if raw.exists() else 0, audio.filename)
         raw.unlink(missing_ok=True)
         return {"part": None, "status": s["status"], "error": traits["error"]}   # agent: "too quiet, ask again"
 
