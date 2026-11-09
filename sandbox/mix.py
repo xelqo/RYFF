@@ -81,99 +81,6 @@ def place_times(slot, first, beat, duration):
     return [t for t in np.arange(start, duration - 0.05, step) if t >= 0.25]
 
 
-_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
-_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
-SCALES = {"major": [0, 2, 4, 5, 7, 9, 11], "minor": [0, 2, 3, 5, 7, 8, 10]}
-NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
-
-
-def best_key(hist):
-    """Krumhansl-Kessler: (tonic pitch class, "major"/"minor") for a 12-bin pitch-class histogram."""
-    h = np.asarray(hist, float)
-    best = (-2.0, 0, "minor")
-    for scale, prof in (("major", _MAJOR), ("minor", _MINOR)):
-        for k in range(12):
-            r = np.corrcoef(h, np.roll(prof, k))[0, 1]
-            if np.isfinite(r) and r > best[0]:
-                best = (float(r), k, scale)
-    return best[1], best[2]
-
-
-def song_key(mono, sr):
-    n, hop = 4096, 2048
-    frames = np.lib.stride_tricks.sliding_window_view(mono, n)[::hop] * np.hanning(n)
-    spec = np.abs(np.fft.rfft(frames, axis=1)).mean(axis=0)
-    f = np.fft.rfftfreq(n, 1 / sr)
-    m = (f > 60) & (f < 2000)
-    pc = np.round(12 * np.log2(f[m] / 440.0) + 69).astype(int) % 12
-    return best_key([spec[m][pc == i].sum() for i in range(12)])
-
-
-def fit_melody(notes, tonic, scale):
-    """Move the hummed notes into the song's key: transpose tonic→tonic, then snap to the scale."""
-    hist = [0.0] * 12
-    for nt in notes:
-        hist[nt["midi"] % 12] += nt["dur_steps"]
-    m_tonic, m_scale = best_key(hist)
-    target = tonic if m_scale == scale else (tonic + (9 if m_scale == "minor" else 3)) % 12   # relative key
-    shift = (target - m_tonic) % 12
-    shift = shift - 12 if shift > 6 else shift
-    sc = SCALES[scale]
-    out = []
-    for nt in notes:
-        m = nt["midi"] + shift
-        pc = (m - tonic) % 12
-        snap = min(sc, key=lambda s: min(abs(pc - s), 12 - abs(pc - s)))
-        d = snap - pc
-        d = d - 12 if d > 6 else d + 12 if d < -6 else d
-        out.append({**nt, "midi": int(m + d)})
-    return out, shift
-
-
-def synth_note(midi, dur, sr, vel=0.8):
-    """Soft electric-piano-ish tone: a few decaying harmonics, short attack, gentle release."""
-    f = 440.0 * 2 ** ((midi - 69) / 12)
-    n = int((dur + 0.25) * sr)
-    t = np.arange(n) / sr
-    tone = (np.sin(2 * np.pi * f * t) + 0.35 * np.exp(-t / 0.4) * np.sin(2 * np.pi * 2 * f * t)
-            + 0.12 * np.exp(-t / 0.2) * np.sin(2 * np.pi * 3 * f * t))
-    env = np.minimum(1.0, t / 0.01) * (0.55 + 0.45 * np.exp(-t / 0.25))
-    rel = t > dur
-    env[rel] *= np.exp(-(t[rel] - dur) / 0.08)
-    tremolo = 1 + 0.08 * np.sin(2 * np.pi * 4.5 * t)
-    return (tone * env * tremolo * vel).astype(np.float32)
-
-
-def render_melody(spec, out, sr, first, beat, key, mono):
-    """Loop the hummed phrase over the song, on the song's beat grid, in the song's key."""
-    notes, note_bpm = spec["notes"], float(spec.get("bpm") or 100)
-    if not notes:
-        return 0, None
-    tonic, scale = key if key else song_key(mono, sr)
-    notes, shift = fit_melody(notes, tonic, scale)
-    src_step = 60.0 / note_bpm / 4                       # seconds per 16th in the take
-    step = beat / 4                                       # seconds per 16th in the song
-    end_steps = max(n["start_step"] + n["dur_steps"] for n in notes)
-    # phrase length on the song grid, rounded up to whole bars (16 steps)
-    phrase_steps = int(np.ceil(end_steps * src_step / step / 16.0)) * 16 or 16
-    layer = np.zeros(len(out), np.float32)
-    start = first
-    while start < len(out) / sr - 0.2:
-        for nt in notes:
-            s_steps = round(nt["start_step"] * src_step / step)
-            d_steps = max(1, round(nt["dur_steps"] * src_step / step))
-            if s_steps >= phrase_steps:
-                continue
-            t0 = start + s_steps * step
-            tone = synth_note(nt["midi"], d_steps * step, sr, nt.get("velocity", 0.8))
-            i = int(t0 * sr)
-            j = min(len(layer), i + len(tone))
-            if i < len(layer):
-                layer[i:j] += tone[: j - i]
-        start += phrase_steps * step
-    return layer, f"{NAMES[tonic]} {scale}"
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("song")
@@ -181,9 +88,6 @@ def main():
     ap.add_argument("--hit", action="append", default=[], help="path:slot")
     ap.add_argument("--bpm", type=float, default=0)
     ap.add_argument("--level", type=float, default=0.55, help="hit peak relative to the song's peak")
-    ap.add_argument("--melody", action="append", default=[], help="json file: {notes: [...], bpm: N}")
-    ap.add_argument("--key", default="", help='song key, e.g. "D minor" (else estimated from the song)')
-    ap.add_argument("--melody-level", type=float, default=0.5)
     a = ap.parse_args()
 
     song, sr = read_wav(a.song)
@@ -208,26 +112,11 @@ def main():
             j = min(len(out), i + len(hit))
             out[i:j] += hit[: j - i]
             placed += 1
-    key = None
-    if a.key:
-        name, _, scale = a.key.partition(" ")
-        if name in NAMES and scale in SCALES:
-            key = (NAMES.index(name), scale)
-    melody_keys = []
-    for path in a.melody:
-        with open(path) as f:
-            spec = json.load(f)
-        layer, used_key = render_melody(spec, out, sr, first, beat, key, mono)
-        if isinstance(layer, np.ndarray) and np.abs(layer).max() > 0:
-            layer *= a.melody_level * song_peak / float(np.abs(layer).max())
-            out += layer[:, None]
-            melody_keys.append(used_key)
     peak = float(np.abs(out).max())
     if peak > 0.98:                         # keep it from clipping
         out *= 0.98 / peak
     write_wav(a.out, out, sr)
-    return {"ok": True, "bpm": round(bpm, 1), "first_beat_s": round(first, 3), "placed": placed,
-            "melodies": len(melody_keys), "melody_key": melody_keys[0] if melody_keys else None}
+    return {"ok": True, "bpm": round(bpm, 1), "first_beat_s": round(first, 3), "placed": placed}
 
 
 if __name__ == "__main__":

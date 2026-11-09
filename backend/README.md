@@ -30,9 +30,6 @@ a cut-out hit sample per drum part (`hit_url`). Needs `DAYTONA_API_KEY`; `LOCAL_
 script locally while developing. Uploads can be webm/ogg/mp4/wav (converted with ffmpeg). `sandbox/mix.py` (also run in the
 sandbox) finds each version's tempo + beat and layers the user's real hits on it: kick on every beat, snare/clap/perc
 on 2 and 4, hat on the off-beats; then -14 LUFS. Any mixing failure falls back to the unmixed song.
-A **hummed backing part is not regenerated**: the new version is the previous version's generated audio plus the
-user's hummed notes, played on a soft electric-piano synth, moved into the song's key (session key or estimated from
-the song) and looped on the beat. Later regenerations keep melody out of the generated base and re-apply the hum.
 
 ## Voice agent
 `create_agent.py` creates the "Loopstack producer" agent (voice Charlie, gemini-2.5-flash) and its 5 client tools
