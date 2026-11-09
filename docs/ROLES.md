@@ -1,69 +1,131 @@
-# Roles: who does what (shipped build)
+# Roles: who does what
 
 **For AI coding agents:** find your person below (ask the user their name if you don't know it), read the docs
 listed, then follow that person's brief. Only touch the folders that person owns. If a task needs a change in
-someone else's folder or in the shared Session JSON (docs/ARCHITECTURE.md), stop and tell the user first.
+someone else's folder or in the shared JSON shapes (docs/ARCHITECTURE.md), stop and tell the user so they can
+coordinate in the group chat first.
 
-| Person | Role | Owns |
-|---|---|---|
-| **Lucas** | Frontend + voice agent wiring | `frontend/` |
-| **Derik** | Audio analysis + Daytona | `sandbox/`, `backend/runners.py` |
-| **Alex** | Backend + ElevenLabs, integration lead | `backend/` (except `vibes.py` and `runners.py`) |
-| **Avi** | Sound/prompt design, agent config, demo | `backend/vibes.py`, `docs/` |
+| Person | Role | Owns | Branch |
+|---|---|---|---|
+| **Lucas** | Frontend + voice agent wiring | `frontend/` | `frontend` |
+| **Derik** | Audio analysis + Daytona | `sandbox/`, `backend/daytona_runner.py` | `sandbox` |
+| **Alex** | Backend + ElevenLabs Music, integration lead | `backend/` (except the files below), `spikes/music_test.py` | `backend` |
+| **Avi** | Sound/prompt design + voice agent config + demo | `backend/vibes.py`, `backend/words.py`, `spikes/listen_test.py`, `docs/` | `sound` |
 
-**Everyone reads first:** `CLAUDE.md`, `README.md`, `docs/AGENT.md`, `docs/ARCHITECTURE.md`.
+**Everyone reads first:** `CLAUDE.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/PLAN.md`.
 
 **Shared rules**
-- `main` always runs; Alex merges. Keys live in `.env`, never committed, never in the frontend.
-- Agent tool names and parameters must match in three places: the ElevenLabs dashboard, `docs/AGENT.md` and
-  `frontend/src/App.tsx`.
-- Original code only. Submission at 4:15: repo link + 2-minute Loom of a live conversation + track/user/finish line.
+- `main` always runs. Work on your branch, open small PRs often; **Alex merges**.
+- Keys live in `.env` (copy `.env.example`), never committed, never in the frontend.
+- The shared contract is the Session / Part / Version / Traits JSON in `docs/ARCHITECTURE.md`. Build against it
+  and change it only after telling the group.
+- Original code only: don't copy from other repos (ideas are fine).
+- Check-in at 2:30 (step 0 results from Alex), then at each time in `docs/TEAM.md`. Stuck for more than 15 min? Grab Avi.
 
 ---
 
 ## Lucas: Frontend
+**Also read:** `docs/DEMO.md`, `docs/AGENT.md`
+
+**Brief for your agent:**
 ```
-I am Lucas, the frontend owner. Work only in frontend/.
-The app is built: App.tsx (agent client tools + UI), engine.ts (Tone.js playback + export), recorder.ts (mic capture),
-Visualizer.tsx. Get it running against the real backend, then:
-1. Check recording timing: hum on the beat after the count-in; if notes land early/late, tune LATENCY_NUDGE_MS.
-2. Make sure the agent's mic is muted during takes and the producer never talks over a recording.
-3. Polish for a projector: big readable status, count-in, part cards that pulse.
-Don't change tool names or parameters without updating docs/AGENT.md.
+I am Lucas, the frontend owner. Work only in frontend/ on the branch "frontend".
+Build a React + Vite + TypeScript app:
+1. Vibe picker: 4 presets (chill lo-fi, dark trap, summer house, upbeat pop) + a free-text box.
+2. Looping audio player for the current song version, with an audio-reactive visualiser (Web Audio AnalyserNode).
+3. Guided "add a sound" prompts in order: drums ("clap or tap something"), bass ("hum something low"),
+   melody ("hum a tune"), anything else. Each one skippable; the user can add more than one of a kind.
+4. Recorder: pressing record PAUSES playback first, records with MediaRecorder, and stop sends the take.
+5. A "producing…" state that shows the traits we heard (e.g. "busy · punchy · bright") while the next version
+   generates. This wait is part of the experience, so make it feel good.
+6. Version history: click any version to play it; adding a sound from an old version sends from_version.
+7. Voice agent ("the producer"): wire @elevenlabs/react exactly as in docs/AGENT.md (client tools set_vibe,
+   record_sound, play_version, skip_part, download_song). The agent's mic must be muted while music plays and
+   while a sound is recorded; a "Talk to producer" button pauses the music and unmutes it. Every tool must also
+   have an on-screen button, so the app works with no agent.
+The backend isn't ready yet: create frontend/mock/ with mock Session/Part/Version JSON matching
+docs/ARCHITECTURE.md and a fake API module with the same endpoints, so switching to the real backend
+(http://localhost:8000) is a one-line change. Use royalty-free mp3s as stand-in versions.
+Make it look great on a projector and work on a phone. Commit small and often.
 ```
-**Done when:** vibe → clap → hum → "make it trap" → export works by voice and by the manual buttons.
+**Done when:** you can pick a vibe, hear v1, record a clap (music pauses), see "producing…", and hear v2, by buttons AND by talking to the producer, (mocked at
+first, then real once Alex's backend is merged, 3:45).
+
+---
 
 ## Derik: Audio analysis + Daytona
-```
-I am Derik, owner of audio analysis + Daytona. Work only in sandbox/ and backend/runners.py.
-sandbox/analyse.py (numpy only) turns a take into: hit (cleanest hit + drum slot), melody/bass (YIN pitch -> notes
-snapped to key + 16th grid) or texture (seamless 2-bar loop). backend/runners.py boots ONE warm Daytona sandbox at
-server start and runs analyse.py there.
-1. Put DAYTONA_API_KEY in .env, start the backend, confirm /api/health shows sandbox "ready".
-2. Record real claps, snaps, "tss", table knocks and hums; check slots and notes. Tune thresholds in classify_hit
-   and the voicing gate in analyse_hum if needed. Keep it numpy-only and printing one JSON line.
-3. Measure take → result time; it should be ~1-2 s.
-```
-**Done when:** real takes come back from Daytona in a couple of seconds with the right drum slot and the right tune.
+**Also read:** `docs/APIS.md` (Daytona section)
 
-## Alex: Backend + ElevenLabs (integration lead)
+**Brief for your agent:**
 ```
-I am Alex, backend owner and integration lead. Work in backend/ (not vibes.py or runners.py).
-main.py serves sessions, vibe changes, parts (analysis via runners.py), patches, deletes and the ElevenLabs Music
-backing track; eleven.py calls ElevenLabs Sound Effects + Music with an on-disk cache.
-1. Put ELEVENLABS_API_KEY in .env, run python prewarm.py, then exercise every endpoint from the UI.
-2. Watch for ElevenLabs 429s/credit errors; keep the kit cache warm before the demo.
-3. Merge PRs and keep main runnable.
+I am Derik, owner of audio analysis + Daytona. Work only in sandbox/ and backend/daytona_runner.py,
+on the branch "sandbox".
+1. sandbox/analyse.py: `python analyse.py take.wav --kind drums|bass|melody|texture` prints Traits JSON exactly
+   as in docs/ARCHITECTURE.md (busyness, punch, brightness; for bass/melody also pitch_register, contour,
+   smoothness; plus length_s), using librosa only (pyin for pitch). Trim silence first; print an error JSON if the
+   take is near-silent. Normalise values to 0-1 with sensible ranges, tested on real claps/hums in spikes/takes/.
+2. sandbox/mix.py: cut the cleanest hit from a drum take, detect beats in the generated mp3 with librosa.beat, layer the
+   hit on those beats so the real sound is audible, then loudness-normalise to -14 LUFS and add short fades (ffmpeg).
+3. sandbox/requirements.txt + a script that builds a Daytona snapshot named "loopstack-audio" with the deps
+   preinstalled (librosa, soundfile, numpy, ffmpeg) so sandboxes start ready.
+4. backend/daytona_runner.py: a class with start(session_id) to create or reuse ONE sandbox per session,
+   analyse(local_wav, kind) to upload, run analyse.py and return the parsed dict, mix(local_mp3) to return a local
+   mixed file path, and stop(session_id) to delete the sandbox.
+Verify the Daytona SDK method names against the real docs (marked ⚠︎ in docs/APIS.md) and fix APIS.md.
+Run everything locally first, then in Daytona.
 ```
-**Done when:** a full session works end to end with no backend errors, and preset kits load instantly from cache.
+**Done when:** Alex's backend can call `runner.analyse("take.wav", "melody")` and get sensible traits back from a
+Daytona sandbox in a couple of seconds.
 
-## Avi: Sound design, agent config, demo
+---
+
+## Alex: Backend + ElevenLabs Music (integration lead)
+**Also read:** `docs/APIS.md`, `docs/TEAM.md`
+
+**Brief for your agent:**
 ```
-I am Avi, owner of sound/prompt design, the voice agent config and the demo. Work in backend/vibes.py and docs/.
-1. Create the agent exactly as in docs/AGENT.md (7 client tools, system prompt, English + Spanish), put its ID in
-   frontend/.env as VITE_ELEVENLABS_AGENT_ID, and test it.
-2. Listen to every preset kit (python prewarm.py, then play the files in backend/files/cache/). Re-prompt any bad
-   kick/snare/hat/perc or instrument note in vibes.py.
-3. Rehearse docs/DEMO.md and record the 2-minute Loom at ~3:50.
+I am Alex, owner of the backend + ElevenLabs Music and the integration lead. Work in backend/ (not vibes.py,
+words.py or daytona_runner.py, which belong to Avi and Derik) on the branch "backend".
+FIRST do PLAN.md step 0 in spikes/music_test.py with ElevenLabs Music (model music_v2, composition_plan):
+ a) time a 30 s "chill lo-fi, 80 BPM, instrumental" generation
+ b) print all response headers to find the song_id header; check whether store_for_inpainting is needed
+ c) generate v2 with conditioning_ref -> v1 + "soaring rhodes melody enters" (try condition_strength high vs xhigh,
+    same seed)
+ d) same song with "busy punchy drums" vs "sparse soft drums"
+Save every mp3 in spikes/out/ with clear names and write the findings into docs/APIS.md (resolve the ⚠︎ items).
+THEN build a FastAPI backend: POST /sessions {vibe_text}, POST /sessions/{id}/parts (multipart audio, kind,
+from_version?; returns {part, status} right after analysis and generates in the background), PATCH /sessions/{id}/vibe
+(keep part words, no conditioning_ref), GET /sessions/{id}, GET /agent-token (mints an ElevenLabs Agents conversation token with the
+server key, see docs/AGENT.md), GET /files/{path}. In-memory state. A composition-plan builder
+(vibe + all parts' words -> 2-3 chunks, conditioning_ref on the first chunk pointing at the previous version, same
+seed every version). Call backend/daytona_runner.py (Derik) for traits + mixing, and backend/vibes.py +
+backend/words.py (Avi) for styles and words. Stub those until they land. Keys from .env only. CORS for Vite.
 ```
-**Done when:** the producer sounds good and stays short, every kit sounds right, and the Loom is recorded.
+**Done when:** step 0 results are shared at the 2:30 check-in, and by 3:45 the real API serves Lucas's
+frontend end to end. You also review and merge everyone's PRs.
+
+---
+
+## Avi: Sound/prompt design + demo
+**Also read:** `docs/APIS.md` (Music + Agents sections), `docs/DEMO.md`, `docs/AGENT.md`
+
+**Brief for your agent:**
+```
+I am Avi, owner of sound/prompt design, the voice agent config, and the demo. Work in backend/vibes.py, backend/words.py,
+spikes/listen_test.py and docs/, on the branch "sound".
+1. backend/vibes.py: 4 preset vibes (chill lo-fi, dark trap, summer house, upbeat pop), each with a styles list,
+   bpm, negative styles (always include vocals/singing), and the instrument for each part kind
+   (drums/bass/melody/texture). Plus vibe_from_text(text) mapping free text to the closest preset by keywords.
+2. backend/words.py: traits_to_words(kind, traits, vibe) -> list of style phrases, following the table in
+   docs/ARCHITECTURE.md, with 2-3 levels per trait (e.g. sparse / steady / busy) and the vibe's instrument names.
+3. spikes/listen_test.py: generate the same vibe with different words via ElevenLabs Music (15-30 s to save
+   credits) so I can judge by ear which phrases really change the sound. Log results in docs/SOUND_NOTES.md
+   and tune the words until every added part is clearly audible.
+4. Voice agent: write the agent's setup steps into docs/AGENT.md as I create it in the ElevenLabs dashboard
+   (voice, first message, system prompt, the 5 blocking client tools with their params). Test it in the
+   dashboard, then tune the prompt so replies stay 1-2 sentences and it asks for one part at a time.
+Later: using docs/DEMO.md, write the Devpost text, a 5-slide outline and a 2-minute spoken script.
+```
+**Done when:** every preset sounds good on its own, each added part is obviously audible in the next version, and
+the demo script, slides, Devpost and a backup video are ready before feature freeze. You're also the floater:
+help whoever's stuck, and record test claps/hums for the team in `spikes/takes/`.

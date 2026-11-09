@@ -1,9 +1,5 @@
 # API notes (checked against the docs on 2026-11-08; re-check anything marked ⚠︎)
 
-> **Shipped build (2:00 PM):** ElevenLabs = the agent + Sound Effects (every kit and instrument sound) + Music
-> (optional backing track, simple `prompt` request in `backend/eleven.py`). The composition-plan / `conditioning_ref`
-> notes below are kept for reference; the shipped build doesn't depend on them.
-
 ## ElevenLabs Music (the core): `POST https://api.elevenlabs.io/v1/music`
 Auth header `xi-api-key: $ELEVENLABS_API_KEY`. Python SDK: `pip install elevenlabs`.
 
@@ -15,8 +11,8 @@ Auth header `xi-api-key: $ELEVENLABS_API_KEY`. Python SDK: `pip install elevenla
   `conditioning_ref`, `condition_strength` (`low|medium|high|xhigh`).
 - `conditioning_ref` = `{ "song_id": "...", "range": { "start_ms": 0, "end_ms": 10000 } }`, a **previously generated**
   song. The first chunk's reference influences every later chunk.
-- ⚠︎ The `song_id` comes back in a **response header**; the docs don't name it, so print all headers on the first call.
-- ⚠︎ Set `store_for_inpainting: true` on every generation in case referencing later requires it. Verify in step 0.
+- The `song_id` comes back in the **`song-id` response header** (verified in step 0).
+- We send `store_for_inpainting: true` on every generation; referencing with it works. (Without it: untested.)
 - `output_format` query param, e.g. `mp3_44100_128`.
 - No raw audio upload: the user's sounds reach the model only as words.
 
@@ -50,16 +46,27 @@ Auth header `xi-api-key: $ELEVENLABS_API_KEY`. Python SDK: `pip install elevenla
 - ⚠︎ Look up the exact server endpoint for minting a conversation token.
 - Full design + system prompt: [AGENT.md](AGENT.md).
 
+## Step 0 results (2026-11-08, Alex): GO
+Test files in `spikes/out/` (gitignored, on Alex's laptop). Numbers are rough spectral measures; **confirm by ear**.
+- **Speed:** a 20 s `music_v2` track takes **~2.5 s**. The wait after each sound is tiny.
+- **Words matter:** "driving busy punchy drums" vs "very sparse soft brushed drums" (same seed): onsets 2.45/s vs
+  0.80/s, high-frequency energy 0.16 vs 0.03. Traits → words will be audible.
+- **Conditioning drowns out new parts.** With an 8 s conditioned intro (high/medium/low strength) v2 is ~0.93–0.98
+  similar to v1, and added "busy drums" did NOT show up (onsets unchanged).
+- **No conditioning + same seed:** busy drums came through (2.35 vs 1.15 onsets/s), similarity to v1 ~0.77–0.83.
+- **Chosen default (`CONDITION_MODE=short`):** a 3 s conditioned intro + main chunk with `context_adherence: low`.
+  The intro matches v1 (0.98) and the new part lands strongly (2.87 onsets/s), but the main section is quite
+  different from v1 (0.32): it plays like "old beat, then the new part drops in". With `medium` adherence the part
+  barely shows (1.43/s).
+- To compare by ear: `c_v1.mp3` → `c_v2_short_low.mp3` (default) vs `b_v2_drums_nocond.mp3` (`CONDITION_MODE=none`).
+
 ## ElevenLabs extras (optional)
 - **Sound Effects** `POST /v1/sound-generation` (`text`, `duration_seconds` 0.5–30, `loop`, `prompt_influence`):
   a UI "ding" or a texture preview. Not needed for the core.
 
 ## Daytona
-Python SDK, key from env `DAYTONA_API_KEY`. `pip install daytona` and `from daytona import Daytona` are confirmed by
-the event deck (slide 13). `sandbox.process.exec(cmd)` returns `.exit_code` and `.result`;
-`sandbox.fs.upload_file(bytes, path)` / `download_file(path) -> bytes`. Used in `backend/runners.py`, which falls back
-gracefully if `CreateSandboxFromSnapshotParams` or `sandbox.delete()` differ. **The shipped build needs no snapshot:**
-`sandbox/analyse.py` is numpy-only.
+Python SDK, key from env `DAYTONA_API_KEY`. ⚠︎ Confirm the package name (`pip install daytona`) and the exec/delete
+names in the SDK reference.
 ```python
 from daytona import Daytona, CreateSandboxFromSnapshotParams
 daytona = Daytona()

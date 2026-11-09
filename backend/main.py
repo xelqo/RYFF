@@ -1,263 +1,285 @@
-"""Loopstack backend: vibes, ElevenLabs sounds, Daytona analysis. Run: uvicorn main:app --reload --port 8000"""
+"""Loopstack backend. Run: cd backend && .venv/bin/uvicorn main:app --reload --port 8000"""
 from __future__ import annotations
 
 import logging
+import os
+import random
+import threading
+import time
+import traceback
 import uuid
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
 
+import requests
 from dotenv import load_dotenv
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / ".env")  # before importing modules that read env vars
-
-import os  # noqa: E402
-
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.staticfiles import StaticFiles  # noqa: E402
-from pydantic import BaseModel  # noqa: E402
-
-import eleven  # noqa: E402
-import vibes as V  # noqa: E402
-from runners import AnalysisError, get_runner, runner_status, start_runners, stop_runners  # noqa: E402
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+ROOT = Path(__file__).resolve().parent
+load_dotenv(ROOT.parent / ".env")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("loopstack")
 
-FILES = Path(__file__).resolve().parent / "files"
-CACHE = FILES / "cache"
-SESS = FILES / "sessions"
-for d in (CACHE, SESS):
-    d.mkdir(parents=True, exist_ok=True)
+import music  # noqa: E402
+from contrib import runner, traits_to_words, vibe_from_text  # noqa: E402
+
+DATA = ROOT / "data"
+CACHE = ROOT / "cache"          # pre-generated v1 per preset vibe (filled by scripts/prewarm or the first run)
+DATA.mkdir(exist_ok=True)
+CACHE.mkdir(exist_ok=True)
+KINDS = {"drums", "bass", "melody", "texture"}
+
+app = FastAPI(title="Loopstack")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.mount("/files", StaticFiles(directory=DATA), name="files")
 
 SESSIONS: dict[str, dict] = {}
-POOL = ThreadPoolExecutor(max_workers=4)  # ElevenLabs limits concurrent requests per plan
-KINDS = {"drum": "hit", "melody": "melody", "bass": "bass", "texture": "texture"}
 
 
-@asynccontextmanager
-async def lifespan(_app):
-    start_runners()  # boots the Daytona sandbox in the background so it's warm before the first take
-    yield
-    stop_runners()
+@app.on_event("startup")
+def _warm_sandbox() -> None:
+    # at server start only (not on import, so tests/scripts don't boot sandboxes)
+    threading.Thread(target=runner.start, args=("",), daemon=True).start()
+
+LOCKS: dict[str, threading.Lock] = {}
 
 
-app = FastAPI(title="Loopstack", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-app.mount("/files", StaticFiles(directory=str(FILES)), name="files")
+# ------------------------------------------------------------------ helpers
+def url_for(path: Path) -> str:
+    return "/files/" + path.relative_to(DATA).as_posix()
 
 
-# ---------------------------------------------------------------- helpers
-def file_url(p: Path) -> str:
-    return "/files/" + p.relative_to(FILES).as_posix()
+def public(s: dict) -> dict:
+    return {k: v for k, v in s.items() if not k.startswith("_")}
 
 
 def get_session(sid: str) -> dict:
     s = SESSIONS.get(sid)
     if not s:
-        raise HTTPException(404, "Session not found. Set a vibe first.")
+        raise HTTPException(404, "session not found")
     return s
 
 
-def find_part(s: dict, pid: str) -> dict:
-    for p in s["parts"]:
-        if p["id"] == pid:
-            return p
-    raise HTTPException(404, "Part not found.")
+GENERIC_INSTRUMENTS = {"drums": "drums", "bass": "bassline", "melody": "melodic backing part", "texture": "ambient texture"}
 
 
-def generate_kit(v: dict) -> tuple[dict, dict, list[str]]:
-    """Drum kit + instrument notes for a vibe, generated in parallel with ElevenLabs Sound Effects."""
-    jobs = {}
-    for slot, desc in v["kit_prompts"].items():
-        jobs[("kit", slot)] = POOL.submit(eleven.sound_effect, CACHE, V.hit_prompt(desc), V.HIT_SECONDS[slot])
-    for role, desc in v["instrument_prompts"].items():
-        jobs[("inst", role)] = POOL.submit(eleven.sound_effect, CACHE, V.note_prompt(desc, role), 2.0)
-    kit, inst, errors = {}, {}, []
-    for (group, name), fut in jobs.items():
+def make_vibe(text: str) -> dict:
+    v = {"text": text, **vibe_from_text(text)}
+    try:
+        from vibes import KEYWORDS
+        keys = KEYWORDS.get(v["name"], ())
+    except ImportError:
+        keys = ()
+    norm = " " + " ".join("".join(c if c.isalnum() else " " for c in text.lower()).split()) + " "
+    if not any(f" {k} " in norm for k in (*keys, v["name"])):
+        # Not one of the presets (e.g. "dreamy synthwave"): use only the user's words, let the model pick the tempo
+        v.update(styles=[], bpm=None, instruments=dict(GENERIC_INSTRUMENTS), matched=False)
+    else:
+        v["matched"] = True
+    return v
+
+
+def build_version(sid: str, reason: str, new_words: list[str] | None, from_version: int | None,
+                  condition: bool) -> None:
+    """Runs in the background: plan → ElevenLabs Music → mix → append a Version."""
+    s = SESSIONS[sid]
+    with LOCKS[sid]:                         # one generation at a time per session, in request order
+        s["status"], s["error"] = "building", None
         try:
-            url = file_url(fut.result())
-        except Exception as e:  # one bad sound shouldn't kill the session
-            errors.append(f"{name}: {e}")
-            url = None
-        (kit if group == "kit" else inst)[name] = url
-    if not any(kit.values()):
-        raise HTTPException(502, "ElevenLabs couldn't make the drum kit: " + "; ".join(errors)[:500])
-    return kit, inst, errors
+            prev = None
+            if condition and s["versions"]:
+                base = next((v for v in s["versions"] if v["n"] == from_version), None) if from_version else None
+                prev = (base or s["versions"][-1]).get("song_id")
+            plan = music.build_plan(s["vibe"], s["parts"], prev, new_words)
+            n = len(s["versions"]) + 1
+            folder = DATA / sid
+            raw = folder / f"v{n}.raw.mp3"
+
+            # Preset vibes (exact preset text, first version) are served from / saved to backend/cache/
+            name = s["vibe"]["name"]
+            is_preset = n == 1 and not s["vibe"].get("key") and s["vibe"]["text"].lower().strip() in PRESET_TEXT.get(name, [])
+            use_cache = is_preset and os.environ.get("USE_CACHE", "1") == "1"
+            cached_mp3, cached_id = CACHE / f"{name}.bare.mp3", CACHE / f"{name}.bare.song_id"   # "bare" = no drums/bass v1
+            if use_cache and cached_mp3.exists() and cached_mp3.stat().st_size > 20000:
+                raw.write_bytes(cached_mp3.read_bytes())
+                song_id = cached_id.read_text().strip() or None if cached_id.exists() else None
+                log.info("v1 from cache (%s)", name)
+            else:
+                audio, song_id, _ = music.generate(plan, s["seed"])
+                raw.write_bytes(audio)
+                if use_cache and len(audio) > 20000:      # never cache an error/empty response
+                    cached_mp3.write_bytes(audio)
+                    cached_id.write_text(song_id or "")
+
+            hits = [(p["_hit_path"], p["traits"].get("slot") or "snare")
+                    for p in s["parts"] if p["kind"] == "drums" and p.get("_hit_path")]
+            try:
+                mixed = Path(runner.mix(str(raw), hits, bpm=s["vibe"].get("bpm"))) if hits else raw
+            except TypeError:                     # stub runner without bpm
+                mixed = Path(runner.mix(str(raw), hits)) if hits else raw
+            s["versions"].append({
+                "n": n, "song_id": song_id, "url": url_for(mixed), "plan": plan, "reason": reason,
+                "from_version": from_version, "conditioned": bool(prev), "created_at": time.time(),
+            })
+            s["status"] = "ready"
+            log.info("session %s: v%d ready (%s)", sid, n, reason)
+        except Exception as e:  # surface to the frontend instead of dying silently
+            traceback.print_exc()
+            s["status"], s["error"] = "error", str(e)
 
 
-def make_vibe(text: str) -> tuple[dict, list[str]]:
-    v = V.build_vibe(text)
-    v["kit"], v["instruments"], errors = generate_kit(v)
-    return v, errors
+PRESET_TEXT = {"lofi": ["chill lo-fi", "lo-fi", "lofi"], "trap": ["dark trap", "trap"],
+               "house": ["summer house", "house"], "pop": ["upbeat pop", "pop"]}
 
 
-def unique_name(s: dict, name: str) -> str:
-    base = (name or "part").strip().lower()[:24] or "part"
-    names = {p["name"] for p in s["parts"]}
-    if base not in names:
-        return base
-    i = 2
-    while f"{base} {i}" in names:
-        i += 1
-    return f"{base} {i}"
-
-
-DEFAULT_NAMES = {"drum": "clap", "melody": "hum", "bass": "bass hum", "texture": "texture"}
-
-
-# ---------------------------------------------------------------- routes
+# ------------------------------------------------------------------ endpoints
 class VibeIn(BaseModel):
-    vibe_text: str = "chill lo-fi"
+    vibe_text: str
+    key: str | None = None          # e.g. "D minor", from POST /key (the user's starter hum)
 
 
-class PartPatch(BaseModel):
-    slot: Optional[str] = None
-    muted: Optional[bool] = None
-    volume: Optional[float] = None
-    name: Optional[str] = None
-
-
-class BackingIn(BaseModel):
-    style: Optional[str] = None
-
-
-@app.get("/api/health")
+@app.get("/health")
 def health():
-    return {"ok": True, **runner_status(), "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY", "").strip())}
+    return {"ok": True, "elevenlabs_key": bool(os.environ.get("ELEVENLABS_API_KEY")),
+            "agent_id": bool(os.environ.get("ELEVENLABS_AGENT_ID")), "runner": type(runner).__name__,
+            **(runner.status() if hasattr(runner, "status") else {})}
 
 
-@app.get("/api/vibes")
-def list_vibes():
-    return V.preset_summaries()
+@app.post("/sessions")
+def create_session(body: VibeIn, bg: BackgroundTasks):
+    sid = uuid.uuid4().hex[:8]
+    (DATA / sid).mkdir()
+    vibe = make_vibe(body.vibe_text)
+    if body.key:
+        vibe["key"] = body.key
+    s = {"id": sid, "vibe": vibe, "parts": [], "versions": [],
+         "seed": random.randint(1, 2**31 - 1), "status": "building", "error": None}
+    SESSIONS[sid], LOCKS[sid] = s, threading.Lock()
+    threading.Thread(target=runner.start, args=(sid,), daemon=True).start()   # warm the sandbox
+    bg.add_task(build_version, sid, "vibe", None, None, False)
+    return public(s)
 
 
-@app.post("/api/sessions")
-def create_session(body: VibeIn):
-    v, errors = make_vibe(body.vibe_text)
-    sid = uuid.uuid4().hex[:10]
-    s = {"id": sid, "vibe": v, "parts": [], "warnings": errors}
-    SESSIONS[sid] = s
-    (SESS / sid).mkdir(parents=True, exist_ok=True)
-    return s
-
-
-@app.post("/api/sessions/{sid}/vibe")
-def change_vibe(sid: str, body: VibeIn):
-    """Curveball-proof: a new vibe keeps every part. Hums move to the new key, claps stay claps."""
+@app.patch("/sessions/{sid}/vibe")
+def change_vibe(sid: str, body: VibeIn, bg: BackgroundTasks):
     s = get_session(sid)
-    old = s["vibe"]
-    v, errors = make_vibe(body.vibe_text)
-    shift = V.transpose_interval(old["tonic"], v["tonic"])
+    key = s["vibe"].get("key")
+    s["vibe"], s["status"] = make_vibe(body.vibe_text), "building"
+    if body.key or key:
+        s["vibe"]["key"] = body.key or key       # the starter hum's key survives a vibe change
+    # keep every part's raw take but re-word it for the new vibe's instruments; no conditioning on the old beat
     for p in s["parts"]:
-        if p.get("notes"):
-            p["notes"] = V.retune(p["notes"], shift, v["tonic"], v["scale"])
-    s["parts"] = [p for p in s["parts"] if p["kind"] != "backing"]  # composed for the old vibe
-    s["vibe"], s["warnings"] = v, errors
-    return s
+        p["words"] = traits_to_words(p["kind"], p["traits"], s["vibe"])
+    bg.add_task(build_version, sid, "vibe", None, None, False)
+    return {"status": "building", "vibe": s["vibe"]}
 
 
-@app.post("/api/sessions/{sid}/parts")
-def add_part(sid: str, audio: UploadFile = File(...), kind: str = Form(...), name: str = Form(""),
-             slot: str = Form(""), pre_roll: float = Form(0.0), steps: int = Form(32)):
+@app.post("/sessions/{sid}/parts")
+def add_part(sid: str, bg: BackgroundTasks, audio: UploadFile = File(...), kind: str = Form(...),
+             from_version: int | None = Form(None)):
     s = get_session(sid)
-    v = s["vibe"]
-    kind = kind.strip().lower()
     if kind not in KINDS:
         raise HTTPException(400, f"kind must be one of {sorted(KINDS)}")
-    steps = int(max(4, min(128, steps)))
-    pre_roll = float(max(0.0, min(1.0, pre_roll)))
-    data = audio.file.read()
-    if len(data) < 2000:
-        raise HTTPException(400, "The recording was empty.")
+    pid = uuid.uuid4().hex[:6]
+    ext = Path(audio.filename or "take.webm").suffix or ".webm"
+    raw = DATA / sid / f"part_{pid}{ext}"
+    raw.write_bytes(audio.file.read())
 
-    pid = uuid.uuid4().hex[:8]
-    pdir = SESS / sid / pid
-    pdir.mkdir(parents=True, exist_ok=True)
-    (pdir / "take.wav").write_bytes(data)
-    args = ["--kind", KINDS[kind], "--bpm", str(v["bpm"]), "--tonic", str(v["tonic"]), "--scale", v["scale"],
-            "--steps", str(steps), "--pre-roll", f"{pre_roll:.4f}"]
     try:
-        result, files = get_runner().run(data, args)
-    except AnalysisError as e:
-        log.warning("analysis failed: %s", e)
-        raise HTTPException(503, str(e))
-    except Exception as e:  # never a bare 500: the error terminal should show what happened
-        log.exception("analysis crashed")
-        raise HTTPException(503, f"Analysis crashed: {type(e).__name__}: {e}")
-    if not result.get("ok"):
-        raise HTTPException(500, f"Analysis failed: {result.get('error')}")
-    for fname, blob in files.items():
-        (pdir / fname).write_bytes(blob)
+        traits = runner.analyse(str(raw), kind, bpm=s["vibe"]["bpm"])
+    except TypeError:                      # stub runner takes no bpm
+        traits = runner.analyse(str(raw), kind)
+    if traits.get("error"):
+        raw.unlink(missing_ok=True)
+        return {"part": None, "status": s["status"], "error": traits["error"]}   # agent: "too quiet, ask again"
 
-    part = {"id": pid, "kind": kind, "muted": False, "volume": 0.0, "raw_url": file_url(pdir / "take.wav"),
-            "analysis": {k: val for k, val in result.items() if k != "notes"}}
-    if kind == "drum":
-        if not result.get("hits") or "sample" not in result:
-            raise HTTPException(422, result.get("message") or "I couldn't hear a clear hit.")
-        part["slot"] = slot if slot in V.SLOTS else result.get("slot", "snare")
-        part["sample_url"] = file_url(pdir / result["sample"])
-    elif kind in ("melody", "bass"):
-        if not result.get("notes"):
-            raise HTTPException(422, result.get("message") or "I couldn't hear a clear tune.")
-        part["notes"] = result["notes"]
-        part["loop_steps"] = steps
-    else:
-        if "loop" not in result:
-            raise HTTPException(422, result.get("message") or "That take was silent.")
-        part["loop_url"] = file_url(pdir / result["loop"])
-        part["loop_steps"] = steps
-        part["volume"] = -4.0
-    part["name"] = unique_name(s, name or DEFAULT_NAMES[kind])
+    hit_path = traits.pop("_hit_path", None)
+    words = traits_to_words(kind, traits, s["vibe"])
+    part = {"id": pid, "kind": kind, "raw_url": url_for(raw), "traits": traits, "words": words,
+            "_raw_path": str(raw), "_hit_path": hit_path}
+    if hit_path:
+        part["hit_url"] = url_for(Path(hit_path))
     s["parts"].append(part)
-    log.info("part %s (%s) via %s", part["name"], kind, result.get("runner"))
-    return {"session": s, "part": part}
+    s["status"] = "building"
+    bg.add_task(build_version, sid, f"added {kind}", words, from_version, True)
+    return {"part": public(part), "status": "building"}
 
 
-@app.patch("/api/sessions/{sid}/parts/{pid}")
-def update_part(sid: str, pid: str, body: PartPatch):
+@app.get("/sessions/{sid}")
+def read_session(sid: str):
     s = get_session(sid)
-    p = find_part(s, pid)
-    if body.slot is not None:
-        if p["kind"] != "drum":
-            raise HTTPException(400, "Only drum parts have a kit slot.")
-        if body.slot not in V.SLOTS:
-            raise HTTPException(400, f"slot must be one of {V.SLOTS}")
-        p["slot"] = body.slot
-    if body.muted is not None:
-        p["muted"] = bool(body.muted)
-    if body.volume is not None:
-        p["volume"] = float(max(-40.0, min(6.0, body.volume)))
-    if body.name:
-        p["name"] = unique_name(s, body.name)
-    return s
+    out = public(s)
+    out["parts"] = [public(p) for p in s["parts"]]
+    return out
 
 
-@app.delete("/api/sessions/{sid}/parts/{pid}")
-def delete_part(sid: str, pid: str):
-    s = get_session(sid)
-    find_part(s, pid)
-    s["parts"] = [p for p in s["parts"] if p["id"] != pid]
-    return s
+class SpeakIn(BaseModel):
+    text: str
 
 
-@app.post("/api/sessions/{sid}/backing")
-def add_backing(sid: str, body: BackingIn):
-    s = get_session(sid)
-    v = s["vibe"]
-    loop_s = v["bars"] * 240.0 / v["bpm"]
-    loops = max(1, round(30.0 / loop_s))
-    length_ms = int(min(120000, max(10000, loops * loop_s * 1000)))
-    prompt = V.backing_prompt(v, body.style)
-    try:
-        path = eleven.compose_music(CACHE, prompt, length_ms)
-    except eleven.ElevenLabsError as e:
-        raise HTTPException(502, str(e))
-    s = get_session(sid)  # re-read: the vibe may have changed while the track was composing
-    s["parts"] = [p for p in s["parts"] if p["kind"] != "backing"]
-    s["parts"].append({"id": uuid.uuid4().hex[:8], "name": "backing track", "kind": "backing", "muted": False,
-                       "volume": -9.0, "loop_url": file_url(path), "prompt": prompt})
-    return s
+@app.post("/speak")
+def speak(body: SpeakIn):
+    """Short spoken prompt from the producer (ElevenLabs TTS), cached by text so repeats are instant."""
+    import hashlib
+    text = body.text.strip()[:300]
+    if not text:
+        raise HTTPException(400, "empty text")
+    voice = os.environ.get("PRODUCER_VOICE_ID", "IKne3meq5aSn9XLyUdCD")       # Charlie
+    folder = DATA / "_tts"
+    folder.mkdir(exist_ok=True)
+    path = folder / (hashlib.sha1(f"{voice}:{text}".encode()).hexdigest()[:16] + ".mp3")
+    if not path.exists() or path.stat().st_size < 1000:
+        r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{voice}",
+                          params={"output_format": "mp3_44100_128"},
+                          headers={"xi-api-key": os.environ.get("ELEVENLABS_API_KEY", "")},
+                          json={"text": text, "model_id": os.environ.get("TTS_MODEL", "eleven_flash_v2_5")}, timeout=30)
+        if not r.ok:
+            raise HTTPException(502, f"text-to-speech {r.status_code}: {r.text[:200]}")
+        path.write_bytes(r.content)
+    return {"url": url_for(path)}
+
+
+@app.post("/key")
+def detect_key(audio: UploadFile = File(...)):
+    """Starter hum → key (e.g. "D minor"), analysed in the Daytona sandbox."""
+    folder = DATA / "_keys"
+    folder.mkdir(exist_ok=True)
+    path = folder / f"{uuid.uuid4().hex[:8]}{Path(audio.filename or 'hum.wav').suffix or '.wav'}"
+    path.write_bytes(audio.file.read())
+    if not hasattr(runner, "detect_key"):
+        return {"error": "key detection needs the Daytona runner"}
+    return runner.detect_key(str(path))
+
+
+@app.post("/transcribe")
+def transcribe(audio: UploadFile = File(...)):
+    """Spoken vibe → text with ElevenLabs Speech-to-Text (Scribe)."""
+    key = os.environ.get("ELEVENLABS_API_KEY")
+    if not key:
+        raise HTTPException(500, "ELEVENLABS_API_KEY is not set")
+    data = audio.file.read()
+    r = requests.post("https://api.elevenlabs.io/v1/speech-to-text", headers={"xi-api-key": key},
+                      data={"model_id": os.environ.get("STT_MODEL", "scribe_v2"), "language_code": "en", "tag_audio_events": "false"},
+                      files={"file": (audio.filename or "vibe.wav", data, audio.content_type or "audio/wav")},
+                      timeout=60)
+    if not r.ok:
+        raise HTTPException(502, f"speech-to-text {r.status_code}: {r.text[:300]}")
+    text = (r.json().get("text") or "").strip().strip(".!?")
+    # drop Scribe's sound tags like "(music)" / "[laughs]"
+    import re
+    text = re.sub(r"[\(\[][^)\]]*[\)\]]", "", text).strip()
+    return {"text": text}
+
+
+@app.get("/agent-token")
+def agent_token():
+    agent_id, key = os.environ.get("ELEVENLABS_AGENT_ID"), os.environ.get("ELEVENLABS_API_KEY")
+    if not agent_id or not key:
+        raise HTTPException(500, "set ELEVENLABS_AGENT_ID and ELEVENLABS_API_KEY in .env")
+    r = requests.get("https://api.elevenlabs.io/v1/convai/conversation/token",
+                     params={"agent_id": agent_id}, headers={"xi-api-key": key}, timeout=20)
+    if not r.ok:
+        raise HTTPException(r.status_code, r.text[:300])
+    return {"token": r.json()["token"]}

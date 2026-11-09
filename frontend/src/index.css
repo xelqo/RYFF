@@ -1,0 +1,290 @@
+:root {
+  --bg: #0d0b14;
+  --panel: #18151f;
+  --line: #2c2738;
+  --text: #f4f1fa;
+  --muted: #a39cb3;
+  --accent: #ff5c8a;
+  --accent-2: #ffb347;
+  --ok: #4ade80;
+  color-scheme: dark;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at 20% 0%, #2a1530 0%, var(--bg) 55%);
+}
+
+.app {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 3rem);
+  letter-spacing: -0.03em;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-size: clamp(1.2rem, 3.5vw, 1.6rem);
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 20px;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: #160c12;
+  background: var(--accent);
+  border: none;
+  border-radius: 999px;
+  padding: 12px 20px;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.ghost,
+.chip {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.chip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.vibe-form {
+  display: flex;
+  gap: 10px;
+}
+
+input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 1.05rem;
+  color: var(--text);
+  background: #0f0d15;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 12px 18px;
+}
+
+.producer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.dot.connected {
+  background: var(--ok);
+}
+
+.dot.connecting {
+  background: var(--accent-2);
+}
+
+.error {
+  color: #ff8080;
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.player-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.play {
+  min-width: 96px;
+  min-height: 64px;
+  font-size: 1.2rem;
+}
+
+.now {
+  font-size: clamp(1.6rem, 5vw, 2.4rem);
+  font-weight: 800;
+}
+
+.visualiser {
+  width: 100%;
+  height: clamp(100px, 22vw, 180px);
+  display: block;
+}
+
+.record {
+  min-width: 140px;
+  min-height: 64px;
+  font-size: 1.2rem;
+}
+
+.record.on {
+  background: #ff3b3b;
+  color: #fff;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.take {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 12px rgba(255, 59, 59, 0.25);
+  }
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.versions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.download {
+  margin-left: auto;
+}
+
+.producing {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-color: var(--accent);
+  background: linear-gradient(120deg, #24142a, var(--panel));
+}
+
+.producing-label {
+  font-size: clamp(1.3rem, 4vw, 1.9rem);
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.eq {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.eq span {
+  width: 8px;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(var(--accent-2), var(--accent));
+  animation: eq 0.9s ease-in-out infinite alternate;
+  transform-origin: bottom;
+}
+
+.heard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.trait {
+  font-weight: 700;
+  font-size: 1.1rem;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 92, 138, 0.15);
+  color: var(--accent);
+}
+
+@keyframes eq {
+  from {
+    transform: scaleY(0.15);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.upload {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 12px 20px;
+  min-height: 48px;
+  box-sizing: border-box;
+}
+.upload.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}

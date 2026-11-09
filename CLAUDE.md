@@ -1,14 +1,21 @@
 # Loopstack: notes for Claude Code
 
-Hackathon project: talk to an ElevenLabs voice agent ("the producer"), pick a vibe, get a beat, then add your own
-sounds (claps → drums, hums → melody/bass, anything else → texture). Must use **ElevenLabs** (agent voice is
-required) and **Daytona** in essential ways. Read README.md, docs/AGENT.md, docs/ARCHITECTURE.md and docs/ROLES.md first.
+Hackathon project: pick a vibe and get a song; the app then asks for sounds (clap → drums, hum → melody/bass,
+anything → texture). Each sound, recorded while the music is PAUSED, is analysed for rough traits, turned into
+words, and the whole song is regenerated with ElevenLabs Music, building on the previous version. Must use
+**ElevenLabs** and **Daytona** in essential ways. Read README.md, docs/ARCHITECTURE.md, docs/APIS.md and docs/TEAM.md
+first. A voice agent ("the producer", ElevenLabs Agents) runs the session; see docs/AGENT.md. It is muted
+whenever music plays or a sound is recorded.
+
+**Find your role in docs/ROLES.md** (Lucas = frontend, Derik = analysis + Daytona, Alex = backend + ElevenLabs,
+Avi = sound design + voice agent + demo). Ask the user who they are if unsure, and stay inside that person's folders.
 
 - Original code only: don't copy from other repos (e.g. our earlier "pulse" project). Ideas are fine.
-- The vibe sets tempo, key, groove and instruments. Changing the vibe keeps parts (hums are re-keyed).
-  The user's clap rhythm is NOT followed; we use the clap's sound only.
-- Frontend: React + Vite + TypeScript + Tone.js + @elevenlabs/react. Backend: Python FastAPI. Sandbox: `sandbox/`.
-- Agent tool names/params in `frontend/src/App.tsx` must match `docs/AGENT.md` and the ElevenLabs dashboard.
-- The browser owns playback and export. The server returns Session JSON + sample URLs.
-- API keys stay in the root `.env`, never in the frontend.
-- `sandbox/analyse.py` must stay numpy-only and print one JSON line; it runs inside Daytona.
+- The vibe can change mid-session by voice: parts are kept and the song is regenerated without `conditioning_ref`.
+- User sounds steer the generated part through traits → words. Hit samples are also mixed in by `mix.py` so the user's real sound is audible.
+- No realtime audio engine or live tempo sync. Every version is one ElevenLabs Music track plus offline mixing in the sandbox.
+- Recording only while playback is paused.
+- Frontend: React + Vite + TypeScript. Backend: Python FastAPI. Sandbox code (librosa/ffmpeg) lives in `sandbox/`.
+- API keys stay in `.env` on the backend, never in the frontend.
+- Reuse ONE Daytona sandbox per session.
+- Follow docs/PLAN.md milestones; keep the app demoable after each one.

@@ -1,7 +1,7 @@
+// Avi's RYFF visualiser (from the avi-new branch), adapted to take any { getValue } dB spectrum source.
 import { useEffect, useRef } from "react";
-import type * as Tone from "tone";
 interface Props {
-  getAgent: () => Uint8Array | null; getMic: () => number; analyser: Tone.Analyser;
+  getAgent: () => Uint8Array | null; getMic: () => number; analyser: { getValue: () => Float32Array };
   countIn: number | null; recording: boolean; listening: boolean; expanded: boolean;
 }
 // Analysis only. This component never connects an audio source to speakers.

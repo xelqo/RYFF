@@ -1,59 +1,59 @@
-export type Slot = "kick" | "snare" | "hat" | "perc";
-export const SLOTS: Slot[] = ["kick", "snare", "hat", "perc"];
+export type PartKind = "drums" | "bass" | "melody" | "texture";
 
-export type PartKind = "drum" | "melody" | "bass" | "texture" | "backing";
-
-export interface Note {
-  start_step: number;
-  dur_steps: number;
-  midi: number;
-  velocity: number;
-}
-
-export interface Vibe {
-  text: string;
-  genre: string;
-  label: string;
-  bpm: number;
-  key: string;
-  tonic: number;
-  scale: string;
-  swing: number;
-  bars: number;
-  pattern: Record<Slot, number[]>;
-  chords: number[][];
-  bass_roots: number[];
-  kit: Record<Slot, string | null>;
-  instruments: { lead: string | null; bass: string | null };
+export interface Traits {
+  busyness: number;
+  punch: number;
+  brightness: number;
+  pitch_register?: "low" | "mid" | "high";
+  contour?: "rising" | "falling" | "arch" | "flat";
+  smoothness?: number;
+  length_s: number;
 }
 
 export interface Part {
   id: string;
-  name: string;
   kind: PartKind;
-  muted: boolean;
-  volume: number;
-  slot?: Slot;
-  sample_url?: string;
-  notes?: Note[];
-  loop_steps?: number;
-  loop_url?: string;
-  raw_url?: string;
-  prompt?: string;
+  raw_url: string;
+  hit_url?: string;
+  traits: Traits;
+  words: string[];
+}
+
+export interface Version {
+  n: number;
+  song_id: string;
+  url: string;
+  plan: unknown;
+  created_at: string;
+}
+
+export interface Vibe {
+  text: string;
+  styles: string[];
+  bpm: number | null;
+  key?: string;
 }
 
 export interface Session {
   id: string;
   vibe: Vibe;
   parts: Part[];
-  warnings?: string[];
+  versions: Version[];
+  seed: number;
+  status?: "building" | "ready" | "error";
+  error?: string | null;
 }
 
-export interface Health {
-  ok: boolean;
-  sandbox: string;
-  sandbox_error?: string | null;
-  fallback: boolean;
-  mode: string;
-  elevenlabs: boolean;
+export type AddPartResult = { part: Part; status: "building" } | { error: string };
+
+export interface Api {
+  createSession(vibeText: string, key?: string): Promise<Session>;
+  changeVibe(sessionId: string, vibeText: string): Promise<{ status: "building" }>;
+  addPart(sessionId: string, audio: Blob, kind: PartKind, fromVersion?: number): Promise<AddPartResult>;
+  getSession(sessionId: string): Promise<Session>;
+  agentToken(): Promise<string | null>;
+  transcribe(audio: Blob): Promise<string>;
+  speak(text: string): Promise<string>;
+  detectKey(audio: Blob): Promise<{ key?: string; error?: string }>;
+  fileUrl(path: string): string;
 }

@@ -1,30 +1,52 @@
-# Build plan (status at 2:00 PM)
+# Build plan
 
-Rule: **always have something demoable.**
+Rule: **always have something demoable.** Each milestone ends with a working app, even if ugly.
 
-## Done in code
-- [x] Vibe presets (lo-fi, trap, house, boom bap, pop, ambient) + free-text keyword matching (`backend/vibes.py`)
-- [x] Kits and instrument notes from ElevenLabs Sound Effects, cached by prompt (`backend/eleven.py`, `prewarm.py`)
-- [x] One warm Daytona sandbox; every take analysed there (`backend/runners.py`, `sandbox/analyse.py`)
-  - hit: onset detection → cleanest hit → drum slot from spectral centroid
-  - hum: YIN pitch tracking → notes → 16th grid + key → register for melody or bass
-  - texture: trimmed, crossfaded loop
-- [x] Tone.js engine: drums in the vibe's pattern, chord pad + root bass, hummed parts on the instrument (synth
-      fallback), texture/backing loops, offline export to WAV (`frontend/src/engine.ts`)
-- [x] Mic capture timestamped on the audio clock, count-in, agent mic muted while recording (`recorder.ts`)
-- [x] ElevenLabs agent client tools: set_vibe, record_part, set_part_slot, mute_part, remove_part, add_backing,
-      export_song (`frontend/src/App.tsx`, `docs/AGENT.md`)
-- [x] Vibe changes keep parts (hums move to the new key): handles the "actually, make it trap" curveball
-- [x] Manual controls for everything, for testing without the agent
+**Clock (today):** Music test go or no-go 2:30 · voice sets the vibe and a song plays 3:00 · penny makes a new version 3:45 · export works and Loom recorded 4:15 · feature freeze until 5:00. Confirm the Loom deadline with the organizers.
 
-## To check today
-- [ ] Each preset kit sounds good (re-prompt in `vibes.py` if not)
-- [ ] Hum timing on your laptop + headphones (`LATENCY_NUDGE_MS`)
-- [ ] Instrument root detection: if a melody sounds out of tune, the sample wasn't one clean note. Re-prompt it
-- [ ] Backing track drift: ElevenLabs Music isn't stretched to our grid. If it drifts audibly, skip it in the demo
+## Step 0: ElevenLabs Music tests (now, before any UI)
+Plain Python scripts in `spikes/`. These decide whether the core idea works:
+1. **Speed:** generate a 30 s lo-fi beat with `music_v2`. How long does it take? (That's the wait after every sound.)
+2. **song_id:** find the header it comes back in, and check whether `store_for_inpainting` is needed to reference it.
+3. **Continuity:** generate v2 with `conditioning_ref` → v1 + `"soaring rhodes melody enters"`. Is it still
+   recognisably the same beat with a melody added? Try `condition_strength` high vs xhigh, with and without the same seed.
+4. **Do the words matter?** Same song with "busy punchy drums" vs "sparse soft drums": can you hear the difference?
+   If not, the traits do nothing, so make the words more extreme.
 
-## Cut list if time runs out (in this order)
-backing track → ambient/pop presets → bass hums (keep melody)
+**Fallbacks:** if conditioning loses the beat, rely on the same seed + the same chunks with styles appended. If it's too
+slow, use 15–20 s versions and pre-generate v1 for the preset vibes.
 
-## Out of scope
-Following the user's exact clap rhythm (the vibe owns the groove) and tempo detection (the vibe sets the tempo).
+## Milestone 1: vibe → song
+- [ ] 4 preset vibes (lo-fi, trap, house, pop) → styles + bpm + instrument names
+- [ ] Backend: `POST /sessions` generates v1. Frontend: vibe picker → player (looping) + visualiser
+- [ ] **Already a demo.**
+
+## Milestone 2: add a sound
+- [ ] Guided prompts (drums → bass → melody → anything else, all skippable)
+- [ ] Record → music auto-pauses → upload → v2 plays. Traits can be faked/random at first
+- [ ] Version history (go back, branch from an older version)
+
+## Milestone 2.5: the voice producer
+- [ ] Agent created in the ElevenLabs dashboard with the prompt + tools from AGENT.md (public agent first)
+- [ ] Frontend wires `@elevenlabs/react`: set_vibe / record_sound / play_version / skip_part / download_song
+- [ ] Mic muting: agent muted while music plays and while recording; "Talk to producer" pauses the music
+- [ ] Backend `GET /agent-token`; switch the agent to private
+
+## Milestone 3: real traits via Daytona
+- [ ] `sandbox/analyse.py` (librosa: busyness, punch, brightness, pitch register, contour, smoothness)
+- [ ] Daytona snapshot + one sandbox per session; `mix.py` loudness + fades
+- [ ] Traits → words table tuned by ear; UI shows "we heard: busy · punchy · bright"
+
+## Milestone 4: polish
+- [ ] Free-text vibes (keyword map to the genre table; small LLM call optional)
+- [ ] Download, nicer visuals, loading animation during generation
+
+## Cut list (in this order)
+free-text vibes (keep presets) → branching history (keep linear undo) → real traits (fall back to fixed words per
+kind; but then Daytona only does mixing, so keep traits if at all possible).
+**Never cut the voice agent** (it's a hackathon requirement). Worst case, fall back to a text-only agent plus the buttons.
+
+## Out of scope (decided)
+- Exact use of the user's rhythm or melody (it's loose inspiration)
+- Recording while music plays
+- Live realtime layering or tempo sync (offline penny mixing in `mix.py` is in scope)
