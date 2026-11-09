@@ -81,7 +81,9 @@ variable **`VITE_API_BASE`** = your backend's HTTPS URL (Production + Preview), 
 
 **Backend → a long-running host, not Vercel.** It keeps sessions in memory, generates in the background, serves
 audio files from disk, needs ffmpeg and a warm Daytona connection; Vercel's serverless functions can't do that.
-- **Render / Railway / Fly.io:** deploy the repo with the root `Dockerfile`, **one instance**, and set the env vars
+- **Render (set up):** Render → New → **Blueprint** → this repo. `render.yaml` builds the root `Dockerfile` as
+  `ryff-api`; paste the keys it asks for. Pushes to `main` redeploy it automatically.
+- **Railway / Fly.io:** deploy the repo with the root `Dockerfile`, **one instance**, and set the env vars
   `ELEVENLABS_API_KEY`, `DAYTONA_API_KEY` (optional: `DAYTONA_SANDBOX_ID`, `PRODUCER_VOICE_ID`). Use its HTTPS URL as `VITE_API_BASE`.
 - **Quickest for a demo:** run the backend on a laptop and expose it with `cloudflared tunnel --url http://localhost:8000`
   (or ngrok), then use that HTTPS URL as `VITE_API_BASE`.

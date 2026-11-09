@@ -1,0 +1,24 @@
+# Render Blueprint: New -> Blueprint -> pick this repo. Builds the root Dockerfile (backend + sandbox scripts).
+services:
+  - type: web
+    name: ryff-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    branch: main
+    plan: free            # free sleeps after 15 min idle (~1 min to wake). Use "starter" ($7/mo) for always-on.
+    healthCheckPath: /health
+    autoDeploy: true      # every push to main redeploys the backend too
+    envVars:
+      - key: ELEVENLABS_API_KEY
+        sync: false       # Render asks for the value when you create the Blueprint
+      - key: DAYTONA_API_KEY
+        sync: false
+      - key: DAYTONA_SANDBOX_ID
+        sync: false       # optional: reuse an existing sandbox instead of creating one
+      - key: ELEVENLABS_AGENT_ID
+        sync: false       # optional: only for the /?classic conversational UI
+      - key: SONG_ID_HEADER
+        value: song-id
+      - key: LOCAL_ANALYSIS_FALLBACK
+        value: "0"
