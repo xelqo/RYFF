@@ -11,7 +11,26 @@ API = "https://api.elevenlabs.io"
 
 
 class ElevenLabsError(RuntimeError):
-    pass
+    def __init__(self, msg: str, body=None):
+        super().__init__(msg)
+        self.body = body
+
+
+def _find_suggestion(obj):
+    """ElevenLabs Music answers a refused prompt (bad_prompt) with a suggested replacement prompt."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if "suggest" in str(k).lower() and isinstance(v, str) and v.strip():
+                return v.strip()
+            found = _find_suggestion(v)
+            if found:
+                return found
+    if isinstance(obj, list):
+        for v in obj:
+            found = _find_suggestion(v)
+            if found:
+                return found
+    return None
 
 
 def _headers() -> dict:
@@ -28,7 +47,11 @@ def _post(path: str, payload: dict, timeout: float) -> bytes:
             time.sleep(1.5 * (attempt + 1))
             continue
         if r.status_code >= 400:
-            raise ElevenLabsError(f"ElevenLabs {path} returned {r.status_code}: {r.text[:300]}")
+            try:
+                body = r.json()
+            except ValueError:
+                body = None
+            raise ElevenLabsError(f"ElevenLabs {path} returned {r.status_code}: {r.text[:300]}", body)
         return r.content
     raise ElevenLabsError(f"ElevenLabs {path} kept returning 429 (too many requests)")
 
@@ -53,4 +76,14 @@ def sound_effect(cache_dir: Path, text: str, duration: float, influence: float =
 
 def compose_music(cache_dir: Path, prompt: str, length_ms: int) -> Path:
     payload = {"prompt": prompt, "music_length_ms": int(length_ms), "force_instrumental": True}
-    return _cached(cache_dir, "music", payload, lambda: _post("/v1/music", payload, 300))
+
+    def fetch():
+        try:
+            return _post("/v1/music", payload, 300)
+        except ElevenLabsError as e:
+            suggestion = _find_suggestion(e.body)
+            if not suggestion:
+                raise
+            return _post("/v1/music", {**payload, "prompt": suggestion}, 300)
+
+    return _cached(cache_dir, "music", payload, fetch)

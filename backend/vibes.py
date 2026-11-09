@@ -66,10 +66,60 @@ PRESETS = {
 }
 
 
+# "Sound like <artist>": we borrow the general style (genre, tempo, instruments), described in words.
+# ElevenLabs Music refuses artist names, and we never imitate an artist's voice, lyrics or songs.
+ARTISTS = {
+    "travis scott": ("trap", "dark psychedelic trap, heavy distorted 808s, hazy reverb-drenched pads"),
+    "metro boomin": ("trap", "cinematic dark trap, ominous orchestral stabs, booming 808s"),
+    "drake": ("trap", "moody atmospheric r&b-trap, muted pads, sparse 808s"),
+    "future": ("trap", "dark melodic trap, rolling hi-hats, deep 808 bass"),
+    "billie eilish": ("trap", "dark minimal pop, whispery textures, deep sub bass"),
+    "kanye": ("boombap", "soulful chopped soul samples, punchy drums, gospel chords"),
+    "kendrick": ("boombap", "jazzy west coast hip hop, live bass, crisp drums"),
+    "dr dre": ("boombap", "west coast g-funk, high synth lead, bouncy bass, crisp snare"),
+    "dr. dre": ("boombap", "west coast g-funk, high synth lead, bouncy bass, crisp snare"),
+    "j dilla": ("boombap", "off-kilter swung drums, warm dusty soul chords"),
+    "nujabes": ("lofi", "jazzy lo-fi hip hop, mellow piano, soft swung drums"),
+    "frank ocean": ("lofi", "warm minimal r&b, soft keys, airy pads"),
+    "sza": ("lofi", "smooth neo-soul r&b, warm keys, laid-back groove"),
+    "daft punk": ("house", "filtered french house, funky disco guitar, four-on-the-floor"),
+    "fred again": ("house", "emotional uk house, chopped atmospheres, shuffling drums"),
+    "calvin harris": ("house", "bright summer dance-pop house, big piano chords"),
+    "avicii": ("house", "euphoric progressive house, folk-tinged melodies"),
+    "taylor swift": ("pop", "polished synth-pop, bright pads, driving drums"),
+    "the weeknd": ("pop", "retro 80s synthwave pop, gated drums, lush synths"),
+    "dua lipa": ("pop", "nu-disco pop, funky bass, bright strings"),
+    "tame impala": ("pop", "dreamy psychedelic synth-pop, phased drums, warm bass"),
+    "bad bunny": ("pop", "reggaeton dembow groove, glossy synths, punchy bass"),
+    "brian eno": ("ambient", "slow evolving ambient drones, soft piano"),
+    "hans zimmer": ("ambient", "cinematic swelling strings, deep pulses"),
+}
+
+
+def find_artist(text: str) -> str | None:
+    t = (text or "").lower()
+    hits = [a for a in ARTISTS if a in t]
+    return max(hits, key=len) if hits else None
+
+
+def strip_artists(text: str) -> str:
+    """Replace artist names with style descriptions so prompts never contain a name."""
+    import re
+
+    out = text or ""
+    for a in sorted(ARTISTS, key=len, reverse=True):
+        out = re.sub(re.escape(a), ARTISTS[a][1], out, flags=re.IGNORECASE)
+    out = re.sub(r"\b(sound(s)? like|in the style of|inspired by|like)\b", "", out, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", out).strip(" ,")
+
+
 def match_genre(text: str) -> str:
     t = (text or "").lower()
     if t.strip() in PRESETS:
         return t.strip()
+    artist = find_artist(t)
+    if artist:
+        return ARTISTS[artist][0]
     best, best_score = "lofi", 0
     for genre, p in PRESETS.items():
         score = sum(len(k) for k in p["keywords"] if k in t)
@@ -87,10 +137,13 @@ def build_vibe(text: str) -> dict:
     genre = match_genre(text)
     p = PRESETS[genre]
     tonic, scale = p["tonic"], p["scale"]
+    artist = find_artist(text)
     return {
         "text": (text or "").strip() or p["label"],
         "genre": genre,
-        "label": p["label"],
+        "label": f"{p['label']} · {artist.title()}-inspired" if artist else p["label"],
+        "inspired_by": artist.title() if artist else None,
+        "style": ARTISTS[artist][1] if artist else None,
         "bpm": p["bpm"],
         "key": f"{NOTE_NAMES[tonic % 12]} {scale}",
         "tonic": tonic,
@@ -115,9 +168,16 @@ def note_prompt(desc: str, role: str) -> str:
 
 
 def backing_prompt(v: dict, style: str | None) -> str:
-    base = (style or "").strip() or v["text"]
-    return (f"{base}, {v['label'].lower()} instrumental, {v['bpm']} BPM, key of {v['key']}, "
-            f"steady tempo, loop-friendly, no vocals")
+    if (style or "").strip():
+        base = strip_artists(style)
+    else:  # an artist vibe's style words say it better than the user's raw sentence
+        base = "" if v.get("style") else v["text"]
+    extra = v.get("style") or ""
+    if extra and extra in base:
+        extra = ""
+    genre_label = PRESETS[v["genre"]]["label"].lower()
+    parts = [x for x in (base, extra, f"{genre_label} instrumental") if x]
+    return f"{', '.join(parts)}, {v['bpm']} BPM, key of {v['key']}, steady tempo, loop-friendly, no vocals"
 
 
 def transpose_interval(old_tonic: int, new_tonic: int) -> int:

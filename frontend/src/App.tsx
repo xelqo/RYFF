@@ -551,6 +551,29 @@ function Studio() {
             {error && <button className="orb-error" onClick={() => setError(null)}>{error}</button>}
             {exported && <a className="orb-download" href={exported.url} download={`ryff-${session?.vibe.genre ?? "track"}.wav`}>Download track ↓</a>}
           </div>
+          {session && session.parts.length > 0 && (
+            <div className="parts-dock" aria-label="Parts in your song">
+              {session.parts.map((p) => (
+                <div key={p.id} id={`pulse-${p.id}`} className={`part-pill ${p.kind} ${p.muted ? "off" : "on"}`}>
+                  <button
+                    className="part-toggle"
+                    role="switch"
+                    aria-checked={!p.muted}
+                    disabled={recording}
+                    title={p.muted ? `Turn ${p.name} on` : `Turn ${p.name} off`}
+                    onClick={() => void safe(() => patchPart(p.name, { muted: !p.muted }, p.muted ? "Turned on" : "Turned off"))}
+                  >
+                    <span className="switch"><span className="knob" /></span>
+                    <span className="part-name">{p.name}</span>
+                    <span className="part-kind">{p.kind === "drum" ? p.slot : p.kind}</span>
+                  </button>
+                  <button className="part-x" aria-label={`Remove ${p.name}`} disabled={recording} onClick={() => void safe(() => removePart(p.name))}>
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </main>
       <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)}
